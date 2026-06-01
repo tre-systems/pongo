@@ -3,7 +3,9 @@ use hecs::World;
 
 /// Apply paddle movement based on intents (Server-Side Validation)
 pub fn move_paddles(world: &mut World, map: &GameMap, config: &Config, dt: f32) {
-    for (_entity, (paddle, intent)) in world.query_mut::<(&mut Paddle, &PaddleIntent)>() {
+    for (_entity, (paddle, intent)) in world.query_mut::<(&mut Paddle, &mut PaddleIntent)>() {
+        let start_y = paddle.y;
+
         // Calculate distance to target
         let diff = intent.target_y - paddle.y;
 
@@ -20,6 +22,15 @@ pub fn move_paddles(world: &mut World, map: &GameMap, config: &Config, dt: f32) 
 
         // Clamp to arena bounds (safety fallback)
         paddle.y = map.clamp_y(paddle.y, config.paddle_height / 2.0);
+
+        // Record the realized vertical velocity (after clamping) so collisions can
+        // impart the paddle's motion onto the ball ("english"/slice). At a wall the
+        // paddle can't move, so velocity is 0 and no spin is added.
+        intent.velocity_y = if dt > 0.0 {
+            (paddle.y - start_y) / dt
+        } else {
+            0.0
+        };
     }
 }
 

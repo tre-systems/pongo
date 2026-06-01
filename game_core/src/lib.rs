@@ -11,8 +11,6 @@ pub use resources::*;
 pub use systems::*;
 
 use hecs::World;
-// The original `use systems::*;` is now redundant due to `pub use systems::*;` above,
-// but keeping it for minimal change as per instruction.
 
 /// Run the deterministic Pong game simulation
 #[allow(clippy::too_many_arguments)]

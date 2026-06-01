@@ -45,15 +45,15 @@ impl Ball {
 /// Movement intent for paddle
 #[derive(Debug, Clone, Copy)]
 pub struct PaddleIntent {
-    pub dir: i8,       // Deprecated: Only used for legacy/client prediction hints if needed
-    pub target_y: f32, // Desired Y position
+    pub target_y: f32,   // Desired Y position (driven by player input)
+    pub velocity_y: f32, // Realized vertical velocity from the last move (units/sec)
 }
 
 impl Default for PaddleIntent {
     fn default() -> Self {
         Self {
-            dir: 0,
             target_y: 12.0, // Center default
+            velocity_y: 0.0,
         }
     }
 }
@@ -65,8 +65,8 @@ impl PaddleIntent {
 
     pub fn with_target(y: f32) -> Self {
         Self {
-            dir: 0,
             target_y: y,
+            velocity_y: 0.0,
         }
     }
 }
@@ -110,12 +110,12 @@ mod tests {
     #[test]
     fn test_paddle_intent_default() {
         let intent = PaddleIntent::default();
-        assert_eq!(intent.dir, 0);
+        assert_eq!(intent.velocity_y, 0.0);
     }
 
     #[test]
     fn test_paddle_intent_new() {
         let intent = PaddleIntent::new();
-        assert_eq!(intent.dir, 0);
+        assert_eq!(intent.velocity_y, 0.0);
     }
 }

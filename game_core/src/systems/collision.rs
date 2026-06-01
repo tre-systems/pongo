@@ -2,7 +2,6 @@ use crate::{Ball, Config, Events, GameMap, Paddle, PaddleIntent};
 use hecs::World;
 
 /// Check ball collisions with walls and paddles
-/// Check ball collisions with walls and paddles
 pub fn check_collisions(world: &mut World, map: &GameMap, config: &Config, events: &mut Events) {
     let mut ball_query = world.query::<&mut Ball>();
     let ball_opt = ball_query.iter().next().map(|(_, b)| b);
@@ -13,14 +12,14 @@ pub fn check_collisions(world: &mut World, map: &GameMap, config: &Config, event
 
         // Paddle collisions
         // Collect paddle info first to avoid borrow conflicts
-        let paddles: Vec<(u8, f32, i8)> = world
+        let paddles: Vec<(u8, f32, f32)> = world
             .query::<(&Paddle, &PaddleIntent)>()
             .iter()
-            .map(|(_e, (p, intent))| (p.player_id, p.y, intent.dir))
+            .map(|(_e, (p, intent))| (p.player_id, p.y, intent.velocity_y))
             .collect();
 
-        for (player_id, paddle_y, paddle_dir) in paddles {
-            handle_paddle_collision(ball, player_id, paddle_y, paddle_dir, config, events);
+        for (player_id, paddle_y, paddle_velocity_y) in paddles {
+            handle_paddle_collision(ball, player_id, paddle_y, paddle_velocity_y, config, events);
         }
     }
 }
@@ -49,7 +48,7 @@ fn handle_paddle_collision(
     ball: &mut Ball,
     player_id: u8,
     paddle_y: f32,
-    paddle_dir: i8,
+    paddle_velocity_y: f32,
     config: &Config,
     events: &mut Events,
 ) {
@@ -68,7 +67,7 @@ fn handle_paddle_collision(
             (player_id == 0 && ball.vel.x < 0.0) || (player_id == 1 && ball.vel.x > 0.0);
 
         if should_bounce {
-            resolve_paddle_collision(ball, player_id, paddle_y, paddle_dir, config);
+            resolve_paddle_collision(ball, player_id, paddle_y, paddle_velocity_y, config);
             events.ball_hit_paddle = true;
         }
     }
@@ -78,13 +77,12 @@ fn resolve_paddle_collision(
     ball: &mut Ball,
     player_id: u8,
     paddle_y: f32,
-    paddle_dir: i8,
+    paddle_velocity_y: f32,
     config: &Config,
 ) {
     let paddle_half_height = config.paddle_height / 2.0;
     let hit_relative_y = ((ball.pos.y - paddle_y) / paddle_half_height).clamp(-1.0, 1.0);
 
-    let paddle_velocity = paddle_dir as f32 * config.paddle_speed;
     let base_speed = ball.vel.length();
     let new_speed = (base_speed * config.ball_speed_increase).min(config.ball_speed_max);
 
@@ -94,9 +92,10 @@ fn resolve_paddle_collision(
     let y_deflection = hit_relative_y * max_deflection_angle * new_speed;
 
     // Paddle Influence:
-    // Impart some of the paddle's vertical velocity to the ball (friction-like effect).
-    // This allows players to "slice" the ball or fight against its vertical momentum.
-    let paddle_influence = paddle_velocity * 0.3;
+    // Impart some of the paddle's actual vertical velocity to the ball (friction-like effect).
+    // This lets players "slice" the ball or fight against its vertical momentum by moving the
+    // paddle on contact. paddle_velocity_y is in [-paddle_speed, paddle_speed].
+    let paddle_influence = paddle_velocity_y * 0.3;
 
     let new_vx = if player_id == 0 {
         new_speed.abs()
@@ -126,7 +125,7 @@ fn resolve_paddle_collision(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{create_ball, create_paddle, Ball, Config, Events, GameMap};
+    use crate::{create_ball, create_paddle, Ball, Config, Events, GameMap, Paddle, PaddleIntent};
 
     fn setup_world() -> (hecs::World, Config, GameMap, Events) {
         let world = hecs::World::new();
@@ -214,6 +213,37 @@ mod tests {
             events.ball_hit_paddle,
             "Should trigger ball_hit_paddle event"
         );
+    }
+
+    #[test]
+    fn test_moving_paddle_imparts_spin() {
+        let (mut world, config, map, mut events) = setup_world();
+        let paddle_x = config.paddle_x(0);
+        let paddle_y = 12.0;
+        create_paddle(&mut world, 0, paddle_y);
+
+        // Paddle moving downward (+y) at full speed when the ball strikes.
+        for (_e, (_p, intent)) in world.query_mut::<(&Paddle, &mut PaddleIntent)>() {
+            intent.velocity_y = config.paddle_speed;
+        }
+
+        // Ball hits the paddle dead-center (so positional deflection is ~0), moving left.
+        let paddle_half_width = config.paddle_width / 2.0;
+        let ball_pos = glam::Vec2::new(
+            paddle_x + paddle_half_width - config.ball_radius * 0.5,
+            paddle_y,
+        );
+        create_ball(&mut world, ball_pos, glam::Vec2::new(-8.0, 0.0));
+
+        check_collisions(&mut world, &map, &config, &mut events);
+
+        for (_entity, ball) in world.query::<&Ball>().iter() {
+            assert!(ball.vel.x > 0.0, "Ball should bounce off the paddle");
+            assert!(
+                ball.vel.y > 0.0,
+                "Downward paddle motion should push the ball downward (+y), not stay flat"
+            );
+        }
     }
 
     #[test]
