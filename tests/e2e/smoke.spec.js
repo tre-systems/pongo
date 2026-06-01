@@ -1,19 +1,6 @@
 const { test, expect } = require("@playwright/test");
 
-// Returns true if the page's browser exposes a usable WebGPU adapter. The client
-// renderer needs WebGPU, so gameplay tests skip where it isn't available.
-async function hasWebGPU(page) {
-  return page.evaluate(async () => {
-    if (!navigator.gpu) return false;
-    try {
-      return !!(await navigator.gpu.requestAdapter());
-    } catch {
-      return false;
-    }
-  });
-}
-
-test.describe("Pongo smoke (no WebGPU required)", () => {
+test.describe("Pongo smoke", () => {
   test("menu loads, WASM initialises, no fatal errors", async ({ page }) => {
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
@@ -46,11 +33,10 @@ test.describe("Pongo smoke (no WebGPU required)", () => {
   });
 });
 
-test.describe("Pongo gameplay (requires WebGPU)", () => {
+test.describe("Pongo gameplay", () => {
   test("start a local game, then pause and resume", async ({ page }) => {
     await page.goto("/");
     await expect(page.locator("#playBtn")).toBeEnabled({ timeout: 15000 });
-    test.skip(!(await hasWebGPU(page)), "WebGPU unavailable in this browser/runner");
 
     await page.locator("#playBtn").click();
 
@@ -76,7 +62,6 @@ test.describe("Pongo gameplay (requires WebGPU)", () => {
     try {
       await hostPage.goto("/");
       await expect(hostPage.locator("#playBtn")).toBeEnabled({ timeout: 15000 });
-      test.skip(!(await hasWebGPU(hostPage)), "WebGPU unavailable in this browser/runner");
 
       await hostPage.locator("#createBtn").click();
       const codeLoc = hostPage.locator("#gameCodeDisplay");

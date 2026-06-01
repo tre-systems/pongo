@@ -16,20 +16,27 @@ impl PlayerId {
     }
 }
 
-/// Paddle component - represents a player's paddle
+/// A player's paddle: its position plus the movement intent driving it.
 #[derive(Debug, Clone, Copy)]
 pub struct Paddle {
-    pub player_id: PlayerId, // LEFT or RIGHT
-    pub y: f32,              // Y position (clamped to arena)
+    pub player_id: PlayerId,
+    pub y: f32,          // current Y (clamped to arena)
+    pub target_y: f32,   // desired Y from the latest input
+    pub velocity_y: f32, // realized vertical velocity from the last move (units/sec)
 }
 
 impl Paddle {
     pub fn new(player_id: PlayerId, y: f32) -> Self {
-        Self { player_id, y }
+        Self {
+            player_id,
+            y,
+            target_y: y,
+            velocity_y: 0.0,
+        }
     }
 }
 
-/// Ball component - the pong ball
+/// Ball - the pong ball
 #[derive(Debug, Clone, Copy)]
 pub struct Ball {
     pub pos: Vec2,
@@ -41,7 +48,7 @@ impl Ball {
         Self { pos, vel }
     }
 
-    /// Reset ball to center with random direction
+    /// Reset ball to center with a random direction
     pub fn reset(&mut self, speed: f32, rng: &mut crate::GameRng) {
         self.pos = Vec2::new(16.0, 12.0); // Center of 32x24 arena
 
@@ -58,35 +65,6 @@ impl Ball {
     }
 }
 
-/// Movement intent for paddle
-#[derive(Debug, Clone, Copy)]
-pub struct PaddleIntent {
-    pub target_y: f32,   // Desired Y position (driven by player input)
-    pub velocity_y: f32, // Realized vertical velocity from the last move (units/sec)
-}
-
-impl Default for PaddleIntent {
-    fn default() -> Self {
-        Self {
-            target_y: 12.0, // Center default
-            velocity_y: 0.0,
-        }
-    }
-}
-
-impl PaddleIntent {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn with_target(y: f32) -> Self {
-        Self {
-            target_y: y,
-            velocity_y: 0.0,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -96,6 +74,8 @@ mod tests {
         let paddle = Paddle::new(PlayerId(0), 12.0);
         assert_eq!(paddle.player_id, PlayerId(0));
         assert_eq!(paddle.y, 12.0);
+        assert_eq!(paddle.target_y, 12.0);
+        assert_eq!(paddle.velocity_y, 0.0);
     }
 
     #[test]
@@ -115,23 +95,8 @@ mod tests {
 
         ball.reset(speed, &mut rng);
 
-        // Verify position reset to center
         assert_eq!(ball.pos, Vec2::new(16.0, 12.0));
-        // Verify velocity has correct magnitude
         assert!((ball.vel.length() - speed).abs() < 0.01);
-        // Verify velocity is not zero
         assert!(ball.vel.length() > 0.0);
-    }
-
-    #[test]
-    fn test_paddle_intent_default() {
-        let intent = PaddleIntent::default();
-        assert_eq!(intent.velocity_y, 0.0);
-    }
-
-    #[test]
-    fn test_paddle_intent_new() {
-        let intent = PaddleIntent::new();
-        assert_eq!(intent.velocity_y, 0.0);
     }
 }

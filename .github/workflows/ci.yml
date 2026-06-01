@@ -64,28 +64,8 @@ jobs:
       - name: Check diagrams render
         run: npm run check:diagrams
 
-  # Browser-only wasm-bindgen tests (client prediction). Kept separate from `check`
-  # so a headless-browser/runner hiccup never blocks a deploy.
-  wasm-test:
-    name: WASM Browser Tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install wasm32 target
-        run: rustup target add wasm32-unknown-unknown
-
-      - name: Install wasm-pack
-        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-
-      - name: Run client_wasm browser tests
-        run: wasm-pack test --headless --firefox client_wasm
-
   # End-to-end browser smoke against a local wrangler dev server. Non-gating for
-  # deploys; gameplay tests skip automatically where the runner lacks WebGPU.
+  # deploys so a headless-browser hiccup never blocks one.
   e2e:
     name: E2E (Playwright)
     runs-on: ubuntu-latest

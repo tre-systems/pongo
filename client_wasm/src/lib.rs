@@ -1,4 +1,4 @@
-//! WebGPU client for Pong game
+//! Canvas2D client for Pong game
 
 // FSM module - platform agnostic, can be tested natively
 mod fsm;
@@ -8,26 +8,18 @@ pub use fsm::{FsmState, GameAction, GameFsm};
 
 // Everything below requires wasm32
 #[cfg(target_arch = "wasm32")]
-mod camera;
+mod canvas2d;
 #[cfg(target_arch = "wasm32")]
 mod input;
 #[cfg(target_arch = "wasm32")]
-mod mesh;
-#[cfg(target_arch = "wasm32")]
 mod network;
-#[cfg(target_arch = "wasm32")]
-mod prediction;
-#[cfg(target_arch = "wasm32")]
-mod renderer;
 #[cfg(target_arch = "wasm32")]
 mod simulation;
 #[cfg(target_arch = "wasm32")]
 mod state;
 
 #[cfg(target_arch = "wasm32")]
-use prediction::ClientPredictor;
-#[cfg(target_arch = "wasm32")]
-use renderer::Renderer;
+use canvas2d::Renderer;
 #[cfg(target_arch = "wasm32")]
 use simulation::LocalGame;
 #[cfg(target_arch = "wasm32")]
@@ -59,10 +51,10 @@ pub struct Client {
     update_last_display: f64,
     // Local game
     local_game: Option<LocalGame>,
-    // Prediction
-    predictor: ClientPredictor,
+    // Own paddle: client-authoritative, integrated locally for a zero-latency feel
     local_paddle_y: f32,
     local_paddle_initialized: bool,
+    input_seq: u32,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -72,14 +64,11 @@ pub struct WasmClient(Client);
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
 impl WasmClient {
-    #[allow(deprecated)]
     #[wasm_bindgen(constructor)]
-    pub async fn new(canvas: HtmlCanvasElement) -> Result<WasmClient, JsValue> {
+    pub fn new(canvas: HtmlCanvasElement) -> Result<WasmClient, JsValue> {
         console_error_panic_hook::set_once();
 
-        let renderer = Renderer::new(canvas)
-            .await
-            .map_err(|e| JsValue::from_str(&e))?;
+        let renderer = Renderer::new(canvas).map_err(|e| JsValue::from_str(&e))?;
 
         Ok(WasmClient(Client {
             renderer,
@@ -96,9 +85,9 @@ impl WasmClient {
             update_display_ms: 0.0,
             update_last_display: 0.0,
             local_game: None,
-            predictor: ClientPredictor::new(),
             local_paddle_y: 12.0,
             local_paddle_initialized: false,
+            input_seq: 0,
         }))
     }
 
@@ -169,14 +158,6 @@ impl WasmClient {
 
         Self::step_simulation(client);
 
-        if client.local_game.is_none() && client.predictor.is_active() {
-            let now_ms = Self::performance_now();
-            let player_id = client.game_state.get_player_id().unwrap_or(0);
-            client
-                .predictor
-                .update(now_ms, player_id, client.paddle_dir);
-        }
-
         let now_ms = Self::performance_now();
         let render_dt = if client.last_frame_time > 0.0 {
             ((now_ms - client.last_frame_time) / 1000.0) as f32
@@ -246,7 +227,6 @@ impl WasmClient {
             proto::S2C::MatchFound | proto::S2C::Countdown { .. } => {
                 client.local_paddle_y = 12.0;
                 client.local_paddle_initialized = false;
-                client.predictor = ClientPredictor::new();
                 // Reset timing to prevent massive dt on first frame
                 client.last_frame_time = 0.0;
                 client.last_sim_time = 0.0;
@@ -256,33 +236,20 @@ impl WasmClient {
         }
 
         let is_game_state = matches!(msg, proto::S2C::GameState(_));
-        let server_tick = if let proto::S2C::GameState(snapshot) = &msg {
-            Some(snapshot.tick)
-        } else {
-            None
-        };
-
-        if let Some(tick) = server_tick {
-            client.predictor.reconcile(tick);
-        }
 
         network::handle_message(msg, &mut client.game_state)
             .map_err(|e| JsValue::from_str(&format!("Msg error: {}", e)))?;
 
-        if is_game_state && !client.predictor.is_active() && client.local_game.is_none() {
+        // On the first snapshot of a match, snap our own paddle to the server's position.
+        if is_game_state && client.local_game.is_none() && !client.local_paddle_initialized {
             if let Some(snapshot) = client.game_state.get_current_snapshot() {
-                client
-                    .predictor
-                    .initialize(&snapshot, Self::performance_now());
-                if !client.local_paddle_initialized {
-                    let pid = client.game_state.get_player_id().unwrap_or(0);
-                    client.local_paddle_y = if pid == 0 {
-                        snapshot.paddle_left_y
-                    } else {
-                        snapshot.paddle_right_y
-                    };
-                    client.local_paddle_initialized = true;
-                }
+                let pid = client.game_state.get_player_id().unwrap_or(0);
+                client.local_paddle_y = if pid == 0 {
+                    snapshot.paddle_left_y
+                } else {
+                    snapshot.paddle_right_y
+                };
+                client.local_paddle_initialized = true;
             }
         }
 
@@ -314,15 +281,10 @@ impl WasmClient {
                 .unwrap_or_default();
         }
 
-        // For client authority, we just send our current Y position
-        // We can still increment seq for ordering if needed
+        // Client is authoritative over its own paddle: send the current Y.
         let pid = client.game_state.get_player_id().unwrap_or(0);
-        let seq = client.predictor.input_seq;
-        client.predictor.input_seq = seq.wrapping_add(1);
-
-        // We don't need to feed predictor with our input for self-prediction
-        // because we are authoritative.
-        // But if predictor is used for opponent, we might leave it be.
+        let seq = client.input_seq;
+        client.input_seq = seq.wrapping_add(1);
 
         network::create_input_message(pid, client.local_paddle_y, seq).unwrap_or_default()
     }
@@ -403,8 +365,6 @@ impl WasmClient {
         self.0.local_game = None;
         // Reset game state
         self.0.game_state.reset();
-        // Reset predictor
-        self.0.predictor = ClientPredictor::new();
         // Reset paddle state
         self.0.local_paddle_y = 12.0;
         self.0.local_paddle_initialized = false;

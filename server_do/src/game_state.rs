@@ -83,10 +83,9 @@ impl GameState {
         // Server uses a fixed seed; matches stay deterministic per Durable Object.
         let mut sim = Simulation::new(12345);
 
-        // Create ball at center
-        let ball_pos = sim.map.ball_spawn();
-        let ball_vel = glam::Vec2::new(sim.config.ball_speed_initial, 0.0);
-        create_ball(&mut sim.world, ball_pos, ball_vel);
+        // Ball starts at center (created by Simulation::new); serve toward the right.
+        let initial = sim.config.ball_speed_initial;
+        sim.ball.vel = glam::Vec2::new(initial, 0.0);
 
         let now = env.now();
 
@@ -128,7 +127,7 @@ impl GameState {
 
         // Spawn paddle
         let paddle_y = self.sim.map.paddle_spawn(PlayerId(player_id)).y;
-        create_paddle(&mut self.sim.world, PlayerId(player_id), paddle_y);
+        self.sim.add_paddle(PlayerId(player_id), paddle_y);
 
         // Check if match can start
         if self.clients.len() == 2 && self.match_state == MatchState::Waiting {
@@ -200,22 +199,7 @@ impl GameState {
         self.clients.remove(&player_id);
 
         // Despawn paddle
-        let entity_to_despawn =
-            self.sim
-                .world
-                .query::<(&Paddle,)>()
-                .iter()
-                .find_map(|(entity, (paddle,))| {
-                    if paddle.player_id == PlayerId(player_id) {
-                        Some(entity)
-                    } else {
-                        None
-                    }
-                });
-
-        if let Some(entity) = entity_to_despawn {
-            let _ = self.sim.world.despawn(entity);
-        }
+        self.sim.remove_paddle(PlayerId(player_id));
 
         // Handle disconnection based on match state
         match self.match_state {
@@ -283,18 +267,14 @@ impl GameState {
         self.last_tick_time = self.env.now();
         self.sim.time = Time::default();
 
-        // Reset world entities (keep clients)
-        self.sim.world.clear();
-
-        // Respawn ball
+        // Reset entities (keep clients)
         let ball_pos = self.sim.map.ball_spawn();
-        let ball_vel = glam::Vec2::new(self.sim.config.ball_speed_initial, 0.0);
-        create_ball(&mut self.sim.world, ball_pos, ball_vel);
-
-        // Respawn paddles
+        let initial = self.sim.config.ball_speed_initial;
+        self.sim.ball = Ball::new(ball_pos, glam::Vec2::new(initial, 0.0));
+        self.sim.paddles.clear();
         for &player_id in self.clients.keys() {
             let paddle_y = self.sim.map.paddle_spawn(PlayerId(player_id)).y;
-            create_paddle(&mut self.sim.world, PlayerId(player_id), paddle_y);
+            self.sim.add_paddle(PlayerId(player_id), paddle_y);
         }
 
         // Set state to countdown
@@ -357,29 +337,21 @@ impl GameState {
     }
 
     pub fn generate_state_message(&self) -> S2C {
-        // Get ball position and velocity
-        let (ball_x, ball_y, ball_vx, ball_vy) = self
-            .sim
-            .world
-            .query::<&Ball>()
-            .iter()
-            .next()
-            .map(|(_e, ball)| (ball.pos.x, ball.pos.y, ball.vel.x, ball.vel.y))
-            .unwrap_or((16.0, 12.0, 0.0, 0.0));
+        // Ball position and velocity
+        let ball = self.sim.ball;
+        let (ball_x, ball_y, ball_vx, ball_vy) = (ball.pos.x, ball.pos.y, ball.vel.x, ball.vel.y);
 
-        // Get paddle positions
+        // Paddle positions
         let mut paddle_left_y = 12.0;
         let mut paddle_right_y = 12.0;
-        let mut paddle_count = 0;
-
-        for (_e, paddle) in self.sim.world.query::<&Paddle>().iter() {
-            paddle_count += 1;
+        for paddle in &self.sim.paddles {
             if paddle.player_id == PlayerId(0) {
                 paddle_left_y = paddle.y;
             } else if paddle.player_id == PlayerId(1) {
                 paddle_right_y = paddle.y;
             }
         }
+        let paddle_count = self.sim.paddles.len();
 
         if self.tick % 60 == 0 {
             self.env.log(format!(

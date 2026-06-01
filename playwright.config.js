@@ -1,7 +1,7 @@
 const { defineConfig, devices } = require("@playwright/test");
 
-// E2E smoke for Pongo. Core tests (menu, WASM load, match-code generation) run
-// anywhere; gameplay tests need WebGPU and skip gracefully where it's unavailable.
+// E2E smoke for Pongo. All tests — menu, WASM load, match-code generation, local
+// gameplay/pause, and two-player matchmaking — run anywhere (Canvas2D needs no GPU).
 // The dev server (wrangler) is started automatically and torn down after the run.
 module.exports = defineConfig({
   testDir: "./tests/e2e",
@@ -19,15 +19,6 @@ module.exports = defineConfig({
       name: "chromium",
       use: {
         ...devices["Desktop Chrome"],
-        launchOptions: {
-          // Best-effort software WebGPU so gameplay tests can run headless.
-          args: [
-            "--enable-unsafe-webgpu",
-            "--enable-features=Vulkan",
-            "--use-angle=swiftshader",
-            "--use-gl=angle",
-          ],
-        },
       },
     },
   ],
