@@ -17,40 +17,9 @@ Rust answers "is this transition allowed?"; JavaScript performs "what happens on
 
 ## Flow
 
-```mermaid
-stateDiagram-v2
-    [*] --> Idle
+![Client state machine](diagrams/client-fsm.png)
 
-    Idle --> CountdownLocal: StartLocal
-    Idle --> Connecting: CreateMatch / JoinMatch
-
-    state "Local Game" as Local {
-        CountdownLocal --> PlayingLocal: CountdownDone
-        PlayingLocal --> Paused: Pause
-        Paused --> PlayingLocal: Resume
-        PlayingLocal --> GameOverLocal: GameOver
-        GameOverLocal --> CountdownLocal: PlayAgain
-    }
-
-    state "Multiplayer" as Multi {
-        Connecting --> Waiting: Connected
-        Connecting --> Idle: ConnectionFailed
-
-        Waiting --> CountdownMulti: OpponentJoined
-        CountdownMulti --> PlayingMulti: CountdownDone
-
-        PlayingMulti --> GameOverMulti: GameOver
-        GameOverMulti --> CountdownMulti: RematchStarted
-
-        PlayingMulti --> Reconnecting: ConnectionLost
-        Reconnecting --> CountdownMulti: Reconnected
-        Reconnecting --> Disconnected: ReconnectFailed
-    }
-
-    Local --> Idle: Quit / Leave
-    Multi --> Disconnected: Disconnected / Timeout
-    Disconnected --> Idle: Leave
-```
+_Source: [`diagrams/client-fsm.dot`](diagrams/client-fsm.dot) — rendered via `npm run diagrams` (see [diagrams/](diagrams/README.md))._
 
 ## The JS wrapper and the transition lock
 

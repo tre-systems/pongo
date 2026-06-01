@@ -21,7 +21,8 @@ Read before substantial work:
 
 ## Verification
 
-- Standard gate: `npm run test:all` — runs `prettier --check`, `cargo fmt --check`, `cargo check --workspace`, `cargo clippy --workspace -- -D warnings`, and `cargo test --workspace`. This should pass before every push.
+- Standard gate: `npm run test:all` — runs `prettier --check`, `cargo fmt --check`, `cargo check --workspace`, `cargo clippy --workspace -- -D warnings`, `cargo test --workspace`, and `npm run check:diagrams`. This should pass before every push.
+- Diagrams: edit the `.dot` sources in `docs/diagrams/`, then `npm run diagrams` to re-render the PNGs (needs Graphviz — `brew install graphviz`). `npm run check:diagrams` verifies they still render. Use Graphviz for anything non-trivial; reserve Mermaid for small inline diagrams. See [`docs/diagrams/README.md`](docs/diagrams/README.md).
 - The husky `pre-commit` hook runs `lint-staged` + `cargo fmt --check` + `cargo check` + `cargo clippy -D warnings` + `cargo test --workspace`. Do not bypass with `--no-verify` unless the user explicitly asks.
 - CI (`.github/workflows/ci.yml`): the `check` job runs `cargo fmt --check`, `prettier --check`, clippy, `cargo test --workspace`, and a `wasm32-unknown-unknown` build check, and gates the deploy on push to `main`. Separate non-gating jobs run the wasm-bindgen browser tests (`wasm-test`) and the Playwright e2e smoke (`e2e`), so a headless-browser hiccup never blocks a deploy.
 

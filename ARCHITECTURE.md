@@ -8,24 +8,9 @@ Pongo is a real-time multiplayer game built on a shared-code architecture. The c
 
 ### High-Level Diagram
 
-```mermaid
-graph TD
-    Client["Client (Browser)"] <-->|WebSocket Binary| Server["Cloudflare Worker"]
+![System overview](docs/diagrams/system-overview.png)
 
-    subgraph "Server (Durable Object)"
-        ServerLoop["Game Loop (60Hz)"]
-        ServerState["Authoritative State"]
-    end
-
-    subgraph "Client (WASM)"
-        Input["Input Handling"] --> Predict["Prediction System"]
-        Predict --> Render["WebGPU Renderer"]
-        ServerState -.->|Snapshot| Reconcile["Reconciliation"]
-    end
-
-    ServerLoop -- Broadcast 20Hz --> Client
-    Client -- Input --> ServerLoop
-```
+_Source: [`docs/diagrams/system-overview.dot`](docs/diagrams/system-overview.dot). All diagrams (and how they render) are in [docs/diagrams/](docs/diagrams/README.md)._
 
 ## Core Patterns
 
@@ -113,6 +98,10 @@ The client flow — menus → matchmaking → gameplay, plus local pause and mul
 ---
 
 ## Key Data Flows
+
+![Netcode: prediction and reconciliation](docs/diagrams/netcode-loop.png)
+
+_Source: [`docs/diagrams/netcode-loop.dot`](docs/diagrams/netcode-loop.dot)._
 
 ### Input Handling
 

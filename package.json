@@ -6,7 +6,7 @@
     "fmt": "cargo fmt",
     "clippy": "cargo clippy --workspace -- -D warnings",
     "test": "cargo test --workspace",
-    "test:all": "prettier --check . && cargo fmt --check && cargo check --workspace && cargo clippy --workspace -- -D warnings && cargo test --workspace",
+    "test:all": "prettier --check . && cargo fmt --check && cargo check --workspace && cargo clippy --workspace -- -D warnings && cargo test --workspace && npm run check:diagrams",
     "format": "prettier --write .",
     "build:client": "cd client_wasm && wasm-pack build --target web --out-dir ../worker/pkg/client_wasm",
     "build:server": "cd lobby_worker && wasm-pack build --target web --out-dir ../worker/pkg && cp index.html style.css script.js ../worker/pkg/",
@@ -14,6 +14,8 @@
     "dev": "npx wrangler dev --assets worker/pkg",
     "deploy": "npx wrangler deploy",
     "logs": "npx wrangler tail pongo --format pretty",
+    "diagrams": "node scripts/render-diagrams.mjs",
+    "check:diagrams": "node scripts/check-diagrams.mjs",
     "test:e2e": "playwright test",
     "test:e2e:install": "playwright install chromium",
     "prepare": "husky"

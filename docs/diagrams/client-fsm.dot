@@ -1,0 +1,132 @@
+digraph ClientFsm {
+  graph [
+    rankdir=TB,
+    bgcolor="#ffffff",
+    pad="0.55",
+    nodesep="0.5",
+    ranksep="0.8",
+    splines=spline,
+    outputorder=edgesfirst,
+    compound=true,
+    newrank=true,
+    forcelabels=true,
+    fontname="Avenir",
+    label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">
+        <TR><TD><FONT POINT-SIZE="34"><B>Client State Machine</B></FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="14" COLOR="#5b6b80">client_wasm/src/fsm.rs — logic in Rust, side effects in JS</FONT></TD></TR>
+      </TABLE>
+    >,
+    labelloc=t,
+    labeljust=c
+  ];
+
+  node [
+    shape=box,
+    style="rounded,filled",
+    margin="0.24,0.15",
+    fixedsize=false,
+    fontname="Avenir",
+    fontsize=17,
+    penwidth=2.6,
+    fontcolor="#14213d",
+    color="#2264c7",
+    fillcolor="#eaf3ff:#ffffff",
+    gradientangle=270
+  ];
+
+  edge [
+    color="#263a59",
+    fontname="Avenir",
+    fontsize=12,
+    fontcolor="#3d4a5c",
+    penwidth=2.0,
+    arrowsize=0.8
+  ];
+
+  // ---- Start + hub ----
+  start [shape=point, width=0.18, color="#5b6b80", fillcolor="#5b6b80"];
+  IDLE [label=<<B>Idle</B><BR/><FONT POINT-SIZE="12" COLOR="#5b6b80">menu</FONT>>, fillcolor="#e0e7ef:#ffffff", color="#5b6b80", penwidth=3.0];
+
+  // ---- Local game (client-only) ----
+  subgraph cluster_local {
+    graph [
+      label=<<FONT POINT-SIZE="16" COLOR="#1f5fbf"><B>LOCAL GAME (vs AI)</B></FONT>>,
+      labelloc=t, labeljust=l,
+      color="#b9d8ff", fillcolor="#f7fbff", style="rounded,filled", penwidth=1.8, margin=18
+    ];
+    CL [label=<<B>CountdownLocal</B>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
+    PL [label=<<B>PlayingLocal</B>>, fillcolor="#d8f5de:#effcf2", color="#15803d", penwidth=3.2];
+    PAUSED [label=<<B>Paused</B>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
+    GOL [label=<<B>GameOverLocal</B>>, fillcolor="#e5e5e5:#f5f5f5", color="#7a7a7a"];
+  }
+
+  // ---- Multiplayer (server-backed) ----
+  subgraph cluster_multi {
+    graph [
+      label=<<FONT POINT-SIZE="16" COLOR="#1e6b43"><B>MULTIPLAYER</B></FONT>>,
+      labelloc=t, labeljust=l,
+      color="#b8e5c8", fillcolor="#f6fdf9", style="rounded,filled", penwidth=1.8, margin=18
+    ];
+    CONN [label=<<B>Connecting</B>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
+    WAIT [label=<<B>Waiting</B>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
+    CM [label=<<B>CountdownMulti</B>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
+    PM [label=<<B>PlayingMulti</B>>, fillcolor="#d8f5de:#effcf2", color="#15803d", penwidth=3.2];
+    GOM [label=<<B>GameOverMulti</B>>, fillcolor="#e5e5e5:#f5f5f5", color="#7a7a7a"];
+    RECON [label=<<B>Reconnecting</B>>, fillcolor="#ffe8cc:#fff7ee", color="#d97706"];
+  }
+
+  DISC [label=<<B>Disconnected</B>>, fillcolor="#fde2e1:#fff5f5", color="#c53030"];
+
+  // ---- Entry ----
+  start -> IDLE;
+  IDLE -> CL [label="StartLocal"];
+  IDLE -> CONN [label="CreateMatch /\nJoinMatch"];
+
+  // ---- Local flow ----
+  CL -> PL [label="CountdownDone"];
+  PL -> PAUSED [label="Pause"];
+  PAUSED -> PL [label="Resume"];
+  PL -> GOL [label="GameOver"];
+  GOL -> CL [label="PlayAgain"];
+
+  // ---- Multiplayer flow ----
+  CONN -> WAIT [label="Connected"];
+  WAIT -> CM [label="OpponentJoined"];
+  CM -> PM [label="CountdownDone"];
+  PM -> GOM [label="GameOver"];
+  GOM -> CM [label="RematchStarted"];
+
+  // ---- Reconnect (mid-match drop) ----
+  PM -> RECON [label="ConnectionLost", color="#d97706", fontcolor="#d97706"];
+  CM -> RECON [label="ConnectionLost", color="#d97706", fontcolor="#d97706"];
+  RECON -> CM [label="Reconnected", color="#15803d", fontcolor="#15803d"];
+
+  // ---- Disconnect / give up (error) ----
+  CM -> DISC [label="Disconnected", color="#c53030", fontcolor="#c53030"];
+  PM -> DISC [label="Disconnected", color="#c53030", fontcolor="#c53030"];
+  GOM -> DISC [label="Disconnected", color="#c53030", fontcolor="#c53030"];
+  RECON -> DISC [label="ReconnectFailed", color="#c53030", fontcolor="#c53030"];
+
+  // ---- Returns to Idle ----
+  // Every active state returns to Idle; drawn as one note rather than nine
+  // criss-crossing edges. The full transition table lives in fsm.rs.
+  RETURNS [
+    shape=note,
+    style="filled",
+    fillcolor="#fbfbfd",
+    color="#9aa6b2",
+    fontcolor="#5b6b80",
+    fontsize=13,
+    penwidth=1.6,
+    label=<
+      <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="1">
+        <TR><TD ALIGN="LEFT"><FONT POINT-SIZE="14"><B>Every state returns to Idle</B></FONT></TD></TR>
+        <TR><TD ALIGN="LEFT">Quit (local play / countdown / paused)</TD></TR>
+        <TR><TD ALIGN="LEFT">Leave (waiting, game over, reconnecting, disconnected)</TD></TR>
+        <TR><TD ALIGN="LEFT">ConnectionFailed (connecting)</TD></TR>
+      </TABLE>
+    >
+  ];
+  DISC -> RETURNS [style=invis];
+}

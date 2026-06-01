@@ -58,6 +58,12 @@ jobs:
       - name: Check WASM build
         run: cargo check --target wasm32-unknown-unknown
 
+      - name: Install Graphviz
+        run: sudo apt-get update && sudo apt-get install -y graphviz
+
+      - name: Check diagrams render
+        run: npm run check:diagrams
+
   # Browser-only wasm-bindgen tests (client prediction). Kept separate from `check`
   # so a headless-browser/runner hiccup never blocks a deploy.
   wasm-test:
