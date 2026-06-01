@@ -69,6 +69,12 @@ npm run deploy       # Deploy to Cloudflare
 
 See **[ARCHITECTURE.md](ARCHITECTURE.md)** for technical details and game constants.
 
+## Contributing
+
+- **[AGENTS.md](AGENTS.md)** — workflow, verification gate, architecture rules, and code map (start here).
+- **[docs/STATE_MACHINE.md](docs/STATE_MACHINE.md)** — the client finite state machine.
+- **[docs/BACKLOG.md](docs/BACKLOG.md)** — known limitations and forward-looking work.
+
 ## License
 
 MIT

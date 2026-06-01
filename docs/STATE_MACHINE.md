@@ -1,49 +1,21 @@
-# State Machine Implementation Review
+# State Machine
 
-## Overview
+The client game flow is driven by a finite state machine with a deliberate split:
 
-The game uses a hybrid State Machine architecture where the **logic** (valid transitions, state definitions) is defined in Rust (compiled to WASM), while the **side effects** (UI updates, DOM manipulation, Network I/O) are handled in JavaScript.
+- **Logic** — the valid states and transitions — lives in Rust, compiled to WASM: `client_wasm/src/fsm.rs`.
+- **Side effects** — DOM, UI, and WebSocket I/O — live in JavaScript: the `FSM` wrapper in `lobby_worker/script.js`.
 
-**Core Files:**
+Rust answers "is this transition allowed?"; JavaScript performs "what happens on enter/exit". The Rust FSM holds only the current `FsmState` — no game data (scores, positions) and no side effects.
 
-- **Logic**: `client_wasm/src/fsm.rs` (The Brain)
-- **Binder**: `client_wasm/src/lib.rs` (Exports FSM to JS)
-- **Driver**: `lobby_worker/script.js` (The Hands)
+## States and actions
 
-## Current Architecture
+`FsmState` (`client_wasm/src/fsm.rs`): `Idle`, `CountdownLocal`, `PlayingLocal`, `GameOverLocal`, `Connecting`, `Waiting`, `CountdownMulti`, `PlayingMulti`, `GameOverMulti`, `Disconnected`.
 
-### The Rust FSM (`GameFsm`)
+`GameAction`: `StartLocal`, `CreateMatch`, `JoinMatch`, `CountdownDone`, `Quit`, `GameOver`, `Connected`, `ConnectionFailed`, `OpponentJoined`, `Disconnected`, `Leave`, `PlayAgain`, `RematchStarted`.
 
-The `GameFsm` struct in Rust is a pure Finite State Machine. It holds the current state (`FsmState` enum) and defines valid transitions via `get_next_state`. It does **not** hold game data (scores, positions) or side effects.
+`GameFsm::get_next_state` is the single transition table; invalid `state + action` pairs are rejected. The FSM is exposed to JS via `wasm_bindgen` (`transition_str`, `state`) and is fully unit-tested in `fsm.rs`.
 
-**Key Characteristics:**
-
-- **Stateless Logic**: Pure functions determine if `State A + Action -> State B` is valid.
-- **WASM Exposed**: Methods like `transition_str` allow JS to drive it using string actions.
-- **Testable**: Fully unit-tested in Rust.
-
-### The JavaScript Driver (`script.js`)
-
-The JS side wraps the WASM FSM instance. It intercepts transitions to perform async side effects (entering/exiting states).
-
-**FSM Wrapper Pattern:**
-
-```javascript
-const FSM = {
-  async transition(action) {
-    // 1. Validate & Update Rust State (Synchronous)
-    const result = rustFsm.transition_str(action);
-    if (!result.success) return false;
-
-    // 2. Perform Side Effects (Async)
-    await this.exitState(prevState);
-    await this.enterState(rustFsm.state);
-    return true;
-  },
-};
-```
-
-## State Flow Diagram
+## Flow
 
 ```mermaid
 stateDiagram-v2
@@ -74,64 +46,22 @@ stateDiagram-v2
     Disconnected --> Idle: Leave
 ```
 
-## Analysis
+## The JS wrapper and the transition lock
 
-### ✅ Strengths
+`lobby_worker/script.js` wraps the Rust FSM instance. Each `transition(action)`:
 
-1.  **Single Source of Truth**: The Rust FSM prevents invalid states (e.g., you can't go from `Idle` to `GameOver` directly).
-2.  **Platform Agnostic Logic**: The FSM logic allows the game flow to be tested without a browser environment.
-3.  **Clean Separation**: Rust handles "What is allowed", JS handles "What happens".
+1. Rejects the action if a transition is already running (an `isTransitioning` guard).
+2. Calls the Rust FSM to validate and advance the state (synchronous).
+3. Runs the async `exitState(prev)` then `enterState(next)` side effects.
+4. Releases the lock in a `finally` block.
 
-### ⚠️ Critical Issues
+The `isTransitioning` lock serialises transitions so that rapid events — for example a disconnect arriving mid-countdown — cannot interleave the enter/exit handlers and desync the UI.
 
-1.  **Async Race Conditions**:
-    The JS `transition` function awaits `exitState` and `enterState`. Since `rustFsm` updates _immediately_ but side effects are _async_, a rapid sequence of events can cause desynchronization.
-    - _Scenario_: `State A` -> `State B`. Rust updates to B. `exitState(A)` begins.
-    - _Interrupt_: New event triggers `State B` -> `State C`. Rust updates to C.
-    - _Race_: `enterState(C)` might run before or during `enterState(B)`, causing UI glitches or broken game loops.
+**Deadlock note:** because an enter-handler runs while the lock is held, it must not synchronously drive another transition through the wrapper, or it will deadlock against its own lock. Where a state needs to advance immediately (e.g. `CountdownLocal` firing `CountdownDone` once the countdown animation finishes), the handler schedules that next transition without awaiting it, so the current transition completes and releases the lock first. See `enterCountdownLocal` in `script.js`.
 
-2.  **Usage Disconnect**:
-    `client_wasm/src/lib.rs` exports the FSM but **never uses it internaly**. The `Client` struct has no knowledge of the FSM state. This means the simulation loop relies on presence checks (`local_game.is_some()`) rather than explicit state checks.
+## Design notes
 
-### ❌ Missing Features
+- The FSM is exported from `client_wasm`, but the Rust `Client` simulation does not read it: the render/sim loop keys off presence checks (`local_game.is_some()`, `predictor.is_active()`) rather than the FSM state. The FSM governs UI and flow in JS, not the Rust simulation.
+- A `GameState` object in `script.js` mirrors `FsmState` for DOM/CSS use.
 
-1.  **Pause State**: No mechanism to pause local games.
-2.  **Reconnection Strategy**: Network failures drop immediately to `Disconnected`. A `Reconnecting` state with a grace period would improve UX.
-3.  **Input Locking**: Inputs aren't explicitly locked during transitions, relying on UI hiding/disabling.
-
-## Recommendations
-
-### 1. Fix Async Race Conditions (High Priority)
-
-Implement a "Transition Lock" in the JS FSM wrapper to queue or reject transitions while one is in progress.
-
-```javascript
-const FSM = {
-  isTransitioning: false,
-  async transition(action) {
-    if (this.isTransitioning) {
-      console.warn("Transition locked:", action);
-      return false;
-    }
-    this.isTransitioning = true;
-    try {
-      // ... perform transition
-    } finally {
-      this.isTransitioning = false;
-    }
-  },
-};
-```
-
-### 2. Standardize State in Rust
-
-Consider passing the `FsmState` into the `Client` struct in `lib.rs`. This would allow the pure Rust simulation to behave differently based on state (e.g., auto-pause if not in `Playing` state) rather than inferring it.
-
-### 3. Add Missing States
-
-- **Paused**: For local play.
-- **Reconnecting**: To handle temporary packet loss without killing the match.
-
-### 4. Code Cleanup
-
-The double definition of `GameState` constants in JS (mapping `FsmState.Idle` to `GameState.IDLE`) is redundant if valid exports exist. Direct usage of `FsmState` in JS would be cleaner.
+Forward-looking changes — a `Paused` state for local play, and a `Reconnecting` grace state instead of dropping straight to `Disconnected` on transient packet loss — are tracked in `docs/BACKLOG.md`.
