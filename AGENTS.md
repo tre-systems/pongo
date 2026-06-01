@@ -28,7 +28,7 @@ Read before substantial work:
 
 ## Build & Run
 
-- `npm run build` — wasm-pack builds `lobby_worker` (server) and `client_wasm` (client) into `worker/pkg/`, and copies the static assets (`index.html`, `style.css`, `script.js`).
+- `npm run build` — wasm-pack builds `lobby_worker` (server) and `client_wasm` (client) into `worker/pkg/`, and copies the static assets (`index.html`, `style.css`, and the front-end JS modules).
 - `npm run dev` — `wrangler dev` on <http://localhost:8787>.
 - `npm run deploy` — `wrangler deploy` (CI does this automatically on push to `main`).
 - `npm run logs` — `wrangler tail` for live Worker logs.

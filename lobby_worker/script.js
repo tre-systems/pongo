@@ -1,98 +1,15 @@
-// Sound effects using Web Audio API
-const AudioContext = window.AudioContext || window.webkitAudioContext;
-let audioCtx = null;
-
-function initAudio() {
-  if (!audioCtx) {
-    audioCtx = new AudioContext();
-  }
-}
-
-function playSound(type) {
-  if (!audioCtx) return;
-
-  const playTone = (freq, type, duration, vol = 0.1, volEnd = 0.01) => {
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-
-    if (Array.isArray(freq)) {
-      // Arpeggio / sequence
-      freq.forEach((f, i) => {
-        osc.frequency.setValueAtTime(f, audioCtx.currentTime + i * 0.15);
-      });
-    } else {
-      osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-    }
-
-    osc.type = type;
-    gain.gain.setValueAtTime(vol, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(volEnd, audioCtx.currentTime + duration);
-
-    osc.start();
-    osc.stop(audioCtx.currentTime + duration);
-  };
-
-  switch (type) {
-    case "paddle":
-      playTone(440, "sine", 0.1);
-      break;
-    case "wall":
-      playTone(220, "sine", 0.08);
-      break;
-    case "score":
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.frequency.setValueAtTime(400, audioCtx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + 0.2);
-      osc.type = "triangle";
-      gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.3);
-      break;
-    case "victory":
-      [0, 0.15, 0.3].forEach((delay, i) => {
-        const o = audioCtx.createOscillator();
-        const g = audioCtx.createGain();
-        o.connect(g);
-        g.connect(audioCtx.destination);
-        o.frequency.setValueAtTime([523, 659, 784][i], audioCtx.currentTime + delay);
-        o.type = "triangle";
-        g.gain.setValueAtTime(0.1, audioCtx.currentTime + delay);
-        g.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + delay + 0.3);
-        o.start(audioCtx.currentTime + delay);
-        o.stop(audioCtx.currentTime + delay + 0.3);
-      });
-      break;
-  }
-}
-
-const CACHE_BUST = new URLSearchParams(window.location.search).get("v") || Date.now();
-const wasmUrl = "/client_wasm/client_wasm.js?v=" + CACHE_BUST;
-
-let init, WasmClient, GameFsm, FsmState;
-try {
-  const module = await import(wasmUrl);
-  init = module.default;
-  WasmClient = module.WasmClient;
-  GameFsm = module.GameFsm;
-  FsmState = module.FsmState;
-
-  // Initialize WASM before using any exports
-  await init();
-} catch (error) {
-  console.error("Failed to load WASM:", error);
-  const playBtn = document.getElementById("playBtn");
-  if (playBtn) {
-    playBtn.textContent = "Failed to load";
-    playBtn.disabled = true;
-  }
-  throw error;
-}
+import { GameFsm, FsmState, WasmClient } from "./wasm.js";
+import { initAudio, playSound } from "./audio.js";
+import {
+  showCountdown,
+  showCountdownNumber,
+  hideCountdownNumber,
+  showVictory,
+  hideVictoryOverlay,
+  showReconnectOverlay,
+  hideReconnectOverlay,
+} from "./overlays.js";
+import { setupInput } from "./input.js";
 
 let client = null;
 let ws = null;
@@ -270,7 +187,7 @@ function enterPlayingLocal(resuming = false) {
     updateScore(0, 0);
   }
   document.body.classList.add("game-active");
-  setupInputIfNeeded();
+  setupInput(client, sendInput);
   startRenderLoop();
 }
 
@@ -390,19 +307,6 @@ function handleMatchEvent(event) {
   }
 }
 
-// Show a single countdown number
-function showCountdownNumber(n) {
-  const el = document.getElementById("countdown");
-  el.textContent = n > 0 ? n.toString() : "GO!";
-  el.classList.add("show");
-  playSound("paddle");
-  setTimeout(() => el.classList.remove("show"), 800);
-}
-
-function hideCountdownNumber() {
-  document.getElementById("countdown").classList.remove("show");
-}
-
 let eventPollingId = null;
 function startEventPolling() {
   stopEventPolling();
@@ -426,7 +330,7 @@ function stopEventPolling() {
 function enterPlayingMulti() {
   lastScore = [0, 0];
   document.body.classList.add("game-active");
-  setupInputIfNeeded();
+  setupInput(client, sendInput);
   startRenderLoop();
   startPingInterval();
   // Poll local input at ~30Hz while in a match.
@@ -748,18 +652,6 @@ function stopReconnect() {
   hideReconnectOverlay();
 }
 
-function showReconnectOverlay(text) {
-  const overlay = document.getElementById("reconnectOverlay");
-  if (!overlay) return;
-  document.getElementById("reconnectText").textContent = text;
-  overlay.classList.add("show");
-}
-
-function hideReconnectOverlay() {
-  const overlay = document.getElementById("reconnectOverlay");
-  if (overlay) overlay.classList.remove("show");
-}
-
 function sendInput() {
   if (ws && ws.readyState === WebSocket.OPEN && client) {
     try {
@@ -797,224 +689,6 @@ if (popOutBtn) {
       "width=380,height=800,menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=no"
     );
   });
-}
-
-let inputSetup = false;
-function setupInputIfNeeded() {
-  if (inputSetup) return;
-  inputSetup = true;
-
-  const pressedKeys = new Set();
-  window.addEventListener(
-    "keydown",
-    (e) => {
-      const gameKeys = ["ArrowUp", "ArrowDown", "w", "W", "s", "S"];
-      if (gameKeys.includes(e.key)) {
-        e.preventDefault();
-        const upKeys = ["ArrowUp", "w", "W"];
-        const downKeys = ["ArrowDown", "s", "S"];
-        if (upKeys.includes(e.key)) {
-          downKeys.forEach((key) => {
-            if (pressedKeys.has(key)) {
-              pressedKeys.delete(key);
-              if (client) client.handle_key_string(key, false);
-            }
-          });
-          pressedKeys.add(e.key);
-        } else if (downKeys.includes(e.key)) {
-          upKeys.forEach((key) => {
-            if (pressedKeys.has(key)) {
-              pressedKeys.delete(key);
-              if (client) client.handle_key_string(key, false);
-            }
-          });
-          pressedKeys.add(e.key);
-        }
-      }
-      if (client) {
-        client.on_key_down(e);
-        sendInput();
-      }
-    },
-    { capture: true, passive: false }
-  );
-
-  window.addEventListener(
-    "keyup",
-    (e) => {
-      const gameKeys = ["ArrowUp", "ArrowDown", "w", "W", "s", "S"];
-      if (gameKeys.includes(e.key)) {
-        e.preventDefault();
-        pressedKeys.delete(e.key);
-      }
-      if (client) {
-        client.on_key_up(e);
-        sendInput();
-      }
-    },
-    { capture: true, passive: false }
-  );
-
-  // --- Touch & Mouse Slide Controls ---
-  const UP_KEY = "ArrowUp";
-  const DOWN_KEY = "ArrowDown";
-  let currentTouchDir = 0;
-  let isPointerDown = false;
-
-  const handlePointerUpdate = (x, y) => {
-    const target = document.elementFromPoint(x, y);
-
-    let newDir = 0;
-    if (target && target.classList.contains("touch-btn")) {
-      newDir = target.dataset.dir === "up" ? -1 : 1;
-    }
-
-    // Update visual state of all buttons
-    document.querySelectorAll(".touch-btn").forEach((btn) => {
-      if (newDir !== 0 && btn.dataset.dir === (newDir === -1 ? "up" : "down")) {
-        btn.classList.add("pressed");
-      } else {
-        btn.classList.remove("pressed");
-      }
-    });
-
-    // Update game input
-    if (newDir !== currentTouchDir) {
-      if (!client) return;
-
-      // Release old direction
-      if (currentTouchDir === -1) client.handle_key_string(UP_KEY, false);
-      if (currentTouchDir === 1) client.handle_key_string(DOWN_KEY, false);
-
-      // Press new direction
-      if (newDir === -1) client.handle_key_string(UP_KEY, true);
-      if (newDir === 1) client.handle_key_string(DOWN_KEY, true);
-
-      currentTouchDir = newDir;
-      sendInput();
-    }
-  };
-
-  const handlePointerEnd = () => {
-    isPointerDown = false;
-
-    // Clear visuals
-    document.querySelectorAll(".touch-btn").forEach((btn) => {
-      btn.classList.remove("pressed");
-    });
-
-    // Release input
-    if (currentTouchDir !== 0 && client) {
-      if (currentTouchDir === -1) client.handle_key_string(UP_KEY, false);
-      if (currentTouchDir === 1) client.handle_key_string(DOWN_KEY, false);
-      currentTouchDir = 0;
-      sendInput();
-    }
-  };
-
-  // --- Touch Event Listeners ---
-  document.addEventListener(
-    "touchstart",
-    (e) => {
-      if (e.target.classList.contains("touch-btn")) {
-        e.preventDefault();
-        // True while a touch or mouse press is held on a control.
-        isPointerDown = true;
-        if (e.touches.length > 0) {
-          handlePointerUpdate(e.touches[0].clientX, e.touches[0].clientY);
-        }
-      }
-    },
-    { passive: false }
-  );
-
-  document.addEventListener(
-    "touchmove",
-    (e) => {
-      // Allow sliding if we're "active" or simply if moving over buttons
-      if (isPointerDown || e.target.classList.contains("touch-btn")) {
-        e.preventDefault();
-        if (e.touches.length > 0) {
-          handlePointerUpdate(e.touches[0].clientX, e.touches[0].clientY);
-        }
-      }
-    },
-    { passive: false }
-  );
-
-  document.addEventListener("touchend", () => {
-    if (isPointerDown) {
-      handlePointerEnd();
-    }
-  });
-
-  document.addEventListener("touchcancel", () => {
-    if (isPointerDown) {
-      handlePointerEnd();
-    }
-  });
-
-  // --- Mouse Event Listeners (Desktop Testing) ---
-  document.addEventListener("mousedown", (e) => {
-    if (e.target.classList.contains("touch-btn")) {
-      isPointerDown = true;
-      handlePointerUpdate(e.clientX, e.clientY);
-    }
-  });
-
-  document.addEventListener("mousemove", (e) => {
-    if (isPointerDown) {
-      e.preventDefault(); // Prevent text selection while dragging
-      handlePointerUpdate(e.clientX, e.clientY);
-    }
-  });
-
-  document.addEventListener("mouseup", () => {
-    if (isPointerDown) {
-      handlePointerEnd();
-    }
-  });
-}
-
-// ========================================
-// Victory/Countdown Overlays
-// ========================================
-async function showCountdown() {
-  const el = document.getElementById("countdown");
-  for (const text of ["3", "2", "1", "GO!"]) {
-    el.textContent = text;
-    el.classList.add("show");
-    playSound("paddle");
-    await new Promise((r) => setTimeout(r, 600));
-    el.classList.remove("show");
-    await new Promise((r) => setTimeout(r, 100));
-  }
-}
-
-function showVictory(winner) {
-  playSound("victory");
-  const overlay = document.getElementById("victoryOverlay");
-  const text = document.getElementById("victoryText");
-
-  if (winner === "you") {
-    text.textContent = "VICTORY";
-    text.className = "status-win";
-  } else {
-    text.textContent = "DEFEAT";
-    text.className = "status-lose";
-  }
-
-  // Reset button
-  const btn = document.getElementById("playAgainBtn");
-  btn.textContent = "Play Again";
-  btn.disabled = false;
-
-  overlay.classList.add("show");
-  document.body.classList.remove("game-active");
-}
-
-function hideVictoryOverlay() {
-  document.getElementById("victoryOverlay").classList.remove("show");
 }
 
 // ========================================
