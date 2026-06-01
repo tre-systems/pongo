@@ -205,7 +205,6 @@ dependencies = [
 name = "game_core"
 version = "0.1.0"
 dependencies = [
- "getrandom",
  "glam",
  "rand",
 ]
@@ -683,7 +682,6 @@ dependencies = [
  "glam",
  "js-sys",
  "proto",
- "serde",
  "worker",
 ]
 

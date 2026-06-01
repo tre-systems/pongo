@@ -1,7 +1,7 @@
 use crate::PlayerId;
+use glam::Vec2;
 
-/// Game tuning parameters for Pong
-#[derive(Debug, Clone, Copy)]
+/// Game tuning parameters for Pong. A namespace for tuning constants; never instantiated.
 pub struct Params;
 
 impl Params {
@@ -23,6 +23,9 @@ impl Params {
 
     // Score
     pub const WIN_SCORE: u8 = 5;
+
+    /// Delay (seconds) after a goal before the ball is re-served.
+    pub const RESPAWN_DELAY: f32 = 1.5;
 
     // Physics
     /// The single fixed simulation timestep (60 Hz). Every host advances the
@@ -69,13 +72,23 @@ impl Config {
         Self::default()
     }
 
-    /// Get X position for paddle based on player ID
+    /// Paddle center X for a side (left at a fixed inset, right mirrored).
     pub fn paddle_x(&self, player_id: PlayerId) -> f32 {
         if player_id == PlayerId::LEFT {
-            1.5 // Left paddle
+            1.5
         } else {
-            self.arena_width - 1.5 // Right paddle
+            self.arena_width - 1.5
         }
+    }
+
+    /// Ball spawn point: the center of the arena.
+    pub fn ball_spawn(&self) -> Vec2 {
+        Vec2::new(self.arena_width / 2.0, self.arena_height / 2.0)
+    }
+
+    /// Paddle spawn Y: vertically centered (both sides start at the arena's mid-height).
+    pub fn paddle_spawn_y(&self) -> f32 {
+        self.arena_height / 2.0
     }
 }
 

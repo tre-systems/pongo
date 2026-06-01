@@ -49,9 +49,6 @@ impl Environment for WasmEnv {
     }
 
     fn log(&self, msg: String) {
-        // console_log! macro comes from worker crate and takes literal fmt string usually,
-        // but we can pass formatted string if we use "%s".
-        // Or actually console_log! invokes web_sys::console::log_1.
         console_log!("{}", msg);
     }
 }
@@ -68,14 +65,12 @@ pub struct GameState {
     pub env: Box<dyn Environment>,
     pub sim: Simulation,
     pub clients: HashMap<u8, ClientInfo>, // player_id (0=left, 1=right) -> ClientInfo
-    pub next_player_id: u8,
     pub match_state: MatchState,
-    pub countdown_remaining: u8, // Countdown seconds remaining (3, 2, 1, 0)
+    pub countdown_remaining: u8,
     pub tick: u32,
-    pub last_input: HashMap<u8, i8>, // Track last input per player to reduce logging
-    pub last_tick_time: u64,         // Unix timestamp in ms
-    pub accumulator: f32,            // For alarm loop catch-up timing
-    pub reconnect_deadline_ms: u64,  // While Paused: forfeit once env.now() passes this
+    pub last_tick_time: u64,        // Unix timestamp in ms
+    pub accumulator: f32,           // For alarm loop catch-up timing
+    pub reconnect_deadline_ms: u64, // While Paused: forfeit once env.now() passes this
 }
 
 impl GameState {
@@ -93,11 +88,9 @@ impl GameState {
             env,
             sim,
             clients: HashMap::new(),
-            next_player_id: 0,
             match_state: MatchState::Waiting,
             countdown_remaining: 3,
             tick: 0,
-            last_input: HashMap::new(),
             last_tick_time: now,
             accumulator: 0.0,
             reconnect_deadline_ms: 0,
@@ -110,8 +103,9 @@ impl GameState {
             return None;
         }
 
-        let player_id = self.next_player_id;
-        self.next_player_id = (self.next_player_id + 1) % 2;
+        // Take whichever side is free, so a re-join after one player leaves can't
+        // collide with the remaining player's id (a rotating counter could).
+        let player_id = if !self.clients.contains_key(&0) { 0 } else { 1 };
 
         let was_empty = self.clients.is_empty();
         let now = self.env.now() / 1000;
@@ -125,8 +119,8 @@ impl GameState {
             },
         );
 
-        // Spawn paddle
-        let paddle_y = self.sim.map.paddle_spawn(PlayerId(player_id)).y;
+        // Spawn paddle at the arena's mid-height.
+        let paddle_y = self.sim.config.paddle_spawn_y();
         self.sim.add_paddle(PlayerId(player_id), paddle_y);
 
         // Check if match can start
@@ -260,20 +254,19 @@ impl GameState {
         // Reset game data
         self.sim.score = Score::new();
         self.sim.events = Events::new();
+        self.sim.respawn_state = RespawnState::new();
         self.tick = 0;
-        self.last_input.clear();
         self.sim.net_queue = NetQueue::new();
         self.accumulator = 0.0;
         self.last_tick_time = self.env.now();
-        self.sim.time = Time::default();
 
         // Reset entities (keep clients)
-        let ball_pos = self.sim.map.ball_spawn();
+        let ball_pos = self.sim.config.ball_spawn();
         let initial = self.sim.config.ball_speed_initial;
         self.sim.ball = Ball::new(ball_pos, glam::Vec2::new(initial, 0.0));
         self.sim.paddles.clear();
+        let paddle_y = self.sim.config.paddle_spawn_y();
         for &player_id in self.clients.keys() {
-            let paddle_y = self.sim.map.paddle_spawn(PlayerId(player_id)).y;
             self.sim.add_paddle(PlayerId(player_id), paddle_y);
         }
 
@@ -285,10 +278,10 @@ impl GameState {
         self.broadcast_to_all(&S2C::Countdown { seconds: 3 });
     }
 
-    /// Process one countdown tick. Returns true if countdown finished.
-    pub fn tick_countdown(&mut self) -> bool {
+    /// Process one countdown tick, advancing to Playing once it reaches zero.
+    pub fn tick_countdown(&mut self) {
         if self.match_state != MatchState::Countdown {
-            return false;
+            return;
         }
 
         if self.countdown_remaining > 0 {
@@ -298,14 +291,11 @@ impl GameState {
             self.env
                 .log(format!("DO: Countdown: {}", self.countdown_remaining));
             self.countdown_remaining -= 1;
-            false
         } else {
-            // Countdown finished, start game
             self.env
                 .log("DO: Countdown complete, starting game!".to_string());
             self.match_state = MatchState::Playing;
             self.broadcast_to_all(&S2C::GameStart);
-            true
         }
     }
 
@@ -341,9 +331,10 @@ impl GameState {
         let ball = self.sim.ball;
         let (ball_x, ball_y, ball_vx, ball_vy) = (ball.pos.x, ball.pos.y, ball.vel.x, ball.vel.y);
 
-        // Paddle positions
-        let mut paddle_left_y = 12.0;
-        let mut paddle_right_y = 12.0;
+        // Paddle positions (default to center height if a paddle is missing).
+        let center_y = self.sim.config.paddle_spawn_y();
+        let mut paddle_left_y = center_y;
+        let mut paddle_right_y = center_y;
         for paddle in &self.sim.paddles {
             if paddle.player_id == PlayerId(0) {
                 paddle_left_y = paddle.y;

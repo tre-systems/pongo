@@ -9,11 +9,6 @@ impl PlayerId {
     pub const LEFT: PlayerId = PlayerId(0);
     /// The right player.
     pub const RIGHT: PlayerId = PlayerId(1);
-
-    /// 0-based index (0 = left, 1 = right), for arrays and side-keyed lookups.
-    pub fn index(self) -> usize {
-        self.0 as usize
-    }
 }
 
 /// A player's paddle: its position plus the movement intent driving it.
@@ -36,7 +31,7 @@ impl Paddle {
     }
 }
 
-/// Ball - the pong ball
+/// The ball: position and velocity, in arena units.
 #[derive(Debug, Clone, Copy)]
 pub struct Ball {
     pub pos: Vec2,
@@ -48,9 +43,9 @@ impl Ball {
         Self { pos, vel }
     }
 
-    /// Reset ball to center with a random direction
-    pub fn reset(&mut self, speed: f32, rng: &mut crate::GameRng) {
-        self.pos = Vec2::new(16.0, 12.0); // Center of 32x24 arena
+    /// Place the ball at `center` and serve it in a random direction at `speed`.
+    pub fn reset(&mut self, center: Vec2, speed: f32, rng: &mut crate::GameRng) {
+        self.pos = center;
 
         // Random angle between -45° and 45°, or 135° and 225°
         use rand::Rng;
@@ -91,11 +86,12 @@ mod tests {
     fn test_ball_reset() {
         let mut ball = Ball::new(Vec2::new(0.0, 0.0), Vec2::new(1.0, 1.0));
         let mut rng = crate::GameRng::new(12345);
+        let center = Vec2::new(16.0, 12.0);
         let speed = 8.0;
 
-        ball.reset(speed, &mut rng);
+        ball.reset(center, speed, &mut rng);
 
-        assert_eq!(ball.pos, Vec2::new(16.0, 12.0));
+        assert_eq!(ball.pos, center);
         assert!((ball.vel.length() - speed).abs() < 0.01);
         assert!(ball.vel.length() > 0.0);
     }

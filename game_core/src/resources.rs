@@ -1,27 +1,5 @@
 use crate::PlayerId;
 
-/// Time resource for tracking simulation time
-#[derive(Debug, Clone, Copy)]
-pub struct Time {
-    pub dt: f32,  // Delta time for this step
-    pub now: f32, // Total elapsed time
-}
-
-impl Time {
-    pub fn new(dt: f32, now: f32) -> Self {
-        Self { dt, now }
-    }
-}
-
-impl Default for Time {
-    fn default() -> Self {
-        Self {
-            dt: crate::Params::FIXED_DT,
-            now: 0.0,
-        }
-    }
-}
-
 /// Game score tracking
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Score {
@@ -60,12 +38,6 @@ impl GameRng {
     pub fn new(seed: u64) -> Self {
         use rand::SeedableRng;
         Self(rand::rngs::StdRng::seed_from_u64(seed))
-    }
-}
-
-impl Default for GameRng {
-    fn default() -> Self {
-        Self::new(12345)
     }
 }
 
@@ -117,7 +89,8 @@ impl Events {
     }
 }
 
-/// Network input queue (placeholder for network inputs)
+/// Absolute-target input queue: every input source (keyboard, touch, AI, network)
+/// pushes a `(player, y)` here; `ingest_inputs` drains it onto paddle targets.
 #[derive(Debug, Clone, Default)]
 pub struct NetQueue {
     pub inputs: Vec<(PlayerId, f32)>, // (player_id, y_absolute)
@@ -128,18 +101,12 @@ impl NetQueue {
         Self::default()
     }
 
-    pub fn clear(&mut self) {
-        self.inputs.clear();
-    }
-
     pub fn push_input(&mut self, player_id: PlayerId, y: f32) {
         self.inputs.push((player_id, y));
     }
 
     pub fn pop_inputs(&mut self) -> Vec<(PlayerId, f32)> {
-        let inputs = self.inputs.clone();
-        self.inputs.clear();
-        inputs
+        std::mem::take(&mut self.inputs)
     }
 }
 
@@ -227,15 +194,5 @@ mod tests {
         assert_eq!(queue.inputs.len(), 2);
         assert_eq!(queue.inputs[0], (PlayerId(0), 10.0));
         assert_eq!(queue.inputs[1], (PlayerId(1), 14.0));
-    }
-
-    #[test]
-    fn test_net_queue_clear() {
-        let mut queue = NetQueue::new();
-        queue.push_input(PlayerId(0), 10.0);
-        queue.push_input(PlayerId(1), 14.0);
-
-        queue.clear();
-        assert_eq!(queue.inputs.len(), 0);
     }
 }

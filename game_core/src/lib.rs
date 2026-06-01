@@ -1,13 +1,11 @@
 pub mod components;
 pub mod config;
-pub mod map;
 pub mod resources;
 pub mod simulation;
 pub mod systems;
 
 pub use components::*;
 pub use config::*;
-pub use map::*;
 pub use resources::*;
 pub use simulation::*;
 pub use systems::*;
@@ -20,17 +18,16 @@ mod integration_tests {
     fn setup_game() -> Simulation {
         let mut sim = Simulation::new(12345);
         sim.ball.vel = glam::Vec2::new(sim.config.ball_speed_initial, 0.0);
-        let p0 = sim.map.paddle_spawn(PlayerId(0)).y;
-        let p1 = sim.map.paddle_spawn(PlayerId(1)).y;
-        sim.add_paddle(PlayerId(0), p0);
-        sim.add_paddle(PlayerId(1), p1);
+        let center_y = sim.config.paddle_spawn_y();
+        sim.add_paddle(PlayerId(0), center_y);
+        sim.add_paddle(PlayerId(1), center_y);
         sim
     }
 
     #[test]
     fn test_full_game_step() {
         let mut sim = setup_game();
-        let center = sim.map.ball_spawn();
+        let center = sim.config.ball_spawn();
         sim.step();
         assert!(
             sim.ball.pos.x != center.x || sim.ball.pos.y != center.y,
@@ -73,7 +70,7 @@ mod integration_tests {
     #[test]
     fn test_scoring_during_step() {
         let mut sim = setup_game();
-        let width = sim.map.width;
+        let width = sim.config.arena_width;
         sim.ball.pos = glam::Vec2::new(width - 0.1, 12.0);
         sim.ball.vel = glam::Vec2::new(8.0, 0.0);
 
@@ -82,7 +79,7 @@ mod integration_tests {
         assert_eq!(sim.score.left, 1, "Left player should score");
         assert!(sim.events.left_scored, "Should trigger left_scored event");
 
-        let center = sim.map.ball_spawn();
+        let center = sim.config.ball_spawn();
         assert!(
             (sim.ball.pos.x - center.x).abs() < 1.0 && (sim.ball.pos.y - center.y).abs() < 1.0,
             "Ball should reset to center after scoring"
@@ -101,7 +98,7 @@ mod integration_tests {
             sim.score.increment_left();
         }
 
-        let width = sim.map.width;
+        let width = sim.config.arena_width;
         sim.ball.pos = glam::Vec2::new(width - 0.1, 12.0);
         sim.ball.vel = glam::Vec2::new(8.0, 0.0);
 
@@ -125,8 +122,8 @@ mod integration_tests {
         for _ in 0..100 {
             sim.step();
 
-            let width = sim.map.width;
-            let height = sim.map.height;
+            let width = sim.config.arena_width;
+            let height = sim.config.arena_height;
             assert!(
                 sim.ball.pos.x > -5.0 && sim.ball.pos.x < width + 5.0,
                 "Ball X should be within reasonable bounds"

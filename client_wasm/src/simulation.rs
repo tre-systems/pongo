@@ -10,15 +10,15 @@ impl LocalGame {
     pub fn new(seed: u64) -> Self {
         let mut sim = Simulation::new(seed);
 
-        // Create paddles
-        let left_paddle_y = sim.map.paddle_spawn(PlayerId(0)).y;
-        let right_paddle_y = sim.map.paddle_spawn(PlayerId(1)).y;
-        sim.add_paddle(PlayerId(0), left_paddle_y);
-        sim.add_paddle(PlayerId(1), right_paddle_y);
+        // Both paddles spawn at the arena's mid-height.
+        let center_y = sim.config.paddle_spawn_y();
+        sim.add_paddle(PlayerId(0), center_y);
+        sim.add_paddle(PlayerId(1), center_y);
 
         // Serve the ball in a random direction.
+        let center = sim.config.ball_spawn();
         let initial_speed = sim.config.ball_speed_initial;
-        sim.ball.reset(initial_speed, &mut sim.rng);
+        sim.ball.reset(center, initial_speed, &mut sim.rng);
 
         Self { sim }
     }

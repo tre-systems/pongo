@@ -1,6 +1,6 @@
 use crate::{Ball, Config, Paddle};
 
-/// Apply paddle movement toward each paddle's target Y (server-side validation).
+/// Move each paddle toward its target Y, capped by paddle_speed and clamped to the arena.
 pub fn move_paddles(paddles: &mut [Paddle], config: &Config, dt: f32) {
     let half_height = config.paddle_height / 2.0;
     for paddle in paddles.iter_mut() {

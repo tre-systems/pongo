@@ -4,37 +4,18 @@ use proto::S2C;
 use std::cell::RefCell;
 use worker::*;
 
-struct MockGameClient {
-    pub sent_messages: RefCell<Vec<Vec<u8>>>,
-}
+// A throwaway client sink for tests that don't inspect what was sent. Tests that
+// need to assert on the sent bytes use SharedMock (see test_broadcast_state).
+struct MockGameClient;
 
 impl MockGameClient {
     fn new() -> Self {
-        Self {
-            sent_messages: RefCell::new(Vec::new()),
-        }
-    }
-
-    // Kept to avoid unused warnings/tests
-    #[allow(dead_code)]
-    fn last_message(&self) -> Option<Vec<u8>> {
-        self.sent_messages.borrow().last().cloned()
-    }
-
-    #[allow(dead_code)]
-    fn count(&self) -> usize {
-        self.sent_messages.borrow().len()
-    }
-
-    #[allow(dead_code)]
-    fn clear(&self) {
-        self.sent_messages.borrow_mut().clear();
+        Self
     }
 }
 
 impl GameClient for MockGameClient {
-    fn send_bytes(&self, bytes: &[u8]) -> Result<()> {
-        self.sent_messages.borrow_mut().push(bytes.to_vec());
+    fn send_bytes(&self, _bytes: &[u8]) -> Result<()> {
         Ok(())
     }
 }
@@ -62,7 +43,6 @@ impl Environment for MockEnv {
 fn test_game_initialization() {
     let gs = GameState::new(Box::new(MockEnv::new()));
     assert_eq!(gs.clients.len(), 0);
-    assert_eq!(gs.next_player_id, 0);
     assert_eq!(gs.match_state, MatchState::Waiting);
 }
 
@@ -220,4 +200,78 @@ fn test_broadcast_state() {
         S2C::GameState { .. } => (),
         _ => panic!("Expected GameState message"),
     }
+}
+
+#[test]
+fn test_player_id_reuses_free_slot_after_removal() {
+    let mut gs = GameState::new(Box::new(MockEnv::new()));
+    gs.add_player(Box::new(MockGameClient::new())); // id 0
+    gs.add_player(Box::new(MockGameClient::new())); // id 1
+
+    // Player 1 leaves; slot 1 is now free while player 0 remains.
+    gs.remove_player(1);
+    assert_eq!(gs.clients.len(), 1);
+    assert!(gs.clients.contains_key(&0));
+
+    // A new join must take the free slot (1), not collide with the existing player 0.
+    let (pid, _) = gs
+        .add_player(Box::new(MockGameClient::new()))
+        .expect("room has space");
+    assert_eq!(
+        pid, 1,
+        "new player takes the free slot, not the occupied id 0"
+    );
+    assert!(gs.clients.contains_key(&0) && gs.clients.contains_key(&1));
+}
+
+#[test]
+fn test_restart_match_resets_state() {
+    let mut gs = GameState::new(Box::new(MockEnv::new()));
+    gs.add_player(Box::new(MockGameClient::new()));
+    gs.add_player(Box::new(MockGameClient::new()));
+
+    // Reach GameOver with a stale score and a pending respawn timer.
+    gs.sim.score.left = 5;
+    gs.sim.respawn_state.start_delay(1.5);
+    gs.match_state = MatchState::GameOver;
+
+    gs.restart_match();
+
+    assert_eq!(gs.match_state, MatchState::Countdown);
+    assert_eq!(gs.countdown_remaining, 3);
+    assert_eq!(gs.sim.score.left, 0);
+    assert_eq!(gs.sim.score.right, 0);
+    assert_eq!(gs.tick, 0);
+    assert!(
+        gs.sim.respawn_state.can_respawn(),
+        "rematch must clear any pending respawn timer so the ball serves immediately"
+    );
+    assert_eq!(gs.sim.paddles.len(), 2, "both paddles re-spawn on restart");
+
+    // Restart only fires from GameOver.
+    gs.match_state = MatchState::Playing;
+    gs.restart_match();
+    assert_eq!(
+        gs.match_state,
+        MatchState::Playing,
+        "restart is a no-op outside GameOver"
+    );
+}
+
+#[test]
+fn test_countdown_progression_starts_game() {
+    let mut gs = GameState::new(Box::new(MockEnv::new()));
+    gs.add_player(Box::new(MockGameClient::new()));
+    gs.add_player(Box::new(MockGameClient::new()));
+    assert_eq!(gs.match_state, MatchState::Countdown);
+
+    // 3 -> 2 -> 1 -> 0 broadcasts keep the match in Countdown...
+    gs.tick_countdown();
+    gs.tick_countdown();
+    gs.tick_countdown();
+    assert_eq!(gs.match_state, MatchState::Countdown);
+
+    // ...then the next tick starts the game.
+    gs.tick_countdown();
+    assert_eq!(gs.match_state, MatchState::Playing);
 }

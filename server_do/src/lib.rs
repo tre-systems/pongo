@@ -29,19 +29,11 @@ impl DurableObject for MatchDO {
     }
 
     async fn fetch(&self, req: Request) -> Result<Response> {
-        console_log!("DO: Received request, method: {:?}", req.method());
-        if let Ok(url) = req.url() {
-            console_log!("DO: Request URL: {}", url);
-        }
-
         // Check for WebSocket upgrade
         let upgrade_header = req.headers().get("Upgrade");
-        console_log!("DO: Upgrade header result: {:?}", upgrade_header);
 
         match upgrade_header {
             Ok(Some(header)) if header.to_lowercase() == "websocket" => {
-                console_log!("DO: Received WebSocket upgrade request");
-
                 let pair = match WebSocketPair::new() {
                     Ok(pair) => pair,
                     Err(err) => {
@@ -56,13 +48,8 @@ impl DurableObject for MatchDO {
                 #[allow(clippy::needless_borrows_for_generic_args)]
                 self.state.accept_web_socket(&server);
 
-                console_log!("DO: WebSocket accepted");
-
                 match Response::from_websocket(client) {
-                    Ok(resp) => {
-                        console_log!("DO: Returning WebSocket 101 response");
-                        Ok(resp)
-                    }
+                    Ok(resp) => Ok(resp),
                     Err(err) => {
                         console_error!("DO: Failed to create WebSocket response: {:?}", err);
                         Response::error("Failed to create WebSocket response", 500)
@@ -146,10 +133,10 @@ impl DurableObject for MatchDO {
     async fn alarm(&self) -> Result<Response> {
         let mut gs = self.game_state.borrow_mut();
 
-        // Check for idle clients and disconnect them (1 minute timeout)
+        // Check for idle clients and disconnect them (2 minute timeout)
         let now_ms = gs.env.now();
         let now_seconds = now_ms / 1000;
-        let idle_timeout_seconds = 120; // 2 minutes
+        let idle_timeout_seconds = 120;
         let mut clients_to_remove = Vec::new();
 
         for (player_id, client_info) in gs.clients.iter() {
@@ -190,7 +177,7 @@ impl DurableObject for MatchDO {
                 1000
             }
             MatchState::Playing => {
-                // Run game simulation at 60 Hz
+                // Run game simulation at 60 Hz (whole ms; exact dt is Params::FIXED_DT).
                 let tick_interval_ms = 16;
 
                 let elapsed_ms = now_ms.saturating_sub(gs.last_tick_time);
@@ -298,14 +285,8 @@ impl MatchDO {
                             let _ = ws.send_with_bytes(&bytes);
                         }
 
-                        // Send initial state
-                        let state_msg = gs.generate_state_message();
-                        if let Ok(bytes) = state_msg.to_bytes() {
-                            // Broadcast to all
-                            for client_info in gs.clients.values() {
-                                let _ = client_info.client.send_bytes(&bytes);
-                            }
-                        }
+                        // Broadcast the initial state to everyone in the room.
+                        gs.broadcast_state();
                         Some(was_empty)
                     } else {
                         gs.env

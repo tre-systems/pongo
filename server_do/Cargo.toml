@@ -12,9 +12,9 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 worker = "0.6"
-serde = { version = "1.0", features = ["derive"] }
 glam = "0.27"
 game_core = { path = "../game_core" }
 proto = { path = "../proto" }
+# Enables getrandom's js backend so `rand` (pulled in via game_core) builds on wasm32.
 getrandom = { version = "0.2", features = ["js"] }
 js-sys = "0.3"
