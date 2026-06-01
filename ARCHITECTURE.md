@@ -4,13 +4,16 @@ This document explains the high-level design of Pongo, how the pieces fit togeth
 
 ## System Overview
 
-Pongo is a real-time multiplayer game built on a shared-code architecture. The core game logic is written in Rust and compiled to WebAssembly (WASM) for both the client (browser) and server (Cloudflare Durable Objects).
+Pongo is a real-time multiplayer game built on a shared-code architecture: the game logic is written in Rust and compiled to WebAssembly, and the _same_ code runs on the authoritative server (a Cloudflare Durable Object) and in the browser's offline VS-AI game. The server steps the simulation at 60Hz and broadcasts a state snapshot every third tick (20Hz); the client renders at display rate, interpolating between snapshots.
 
 ### High-Level Diagram
 
 ![System overview](docs/diagrams/system-overview.png)
 
 _Source: [`docs/diagrams/system-overview.dot`](docs/diagrams/system-overview.dot). All diagrams (and how they render) are in [docs/diagrams/](docs/diagrams/README.md)._
+
+> [!NOTE]
+> Durable Objects run "at the edge", but each match runs in a **single** location — wherever Cloudflare first instantiates the DO, typically near whoever created the match. Players far from that location still see light-speed latency; region-aware placement is a possible future improvement (see [docs/BACKLOG.md](docs/BACKLOG.md)).
 
 ## Core Patterns
 
@@ -53,47 +56,7 @@ The project is structured as a Cargo workspace with shared crates.
 | **proto**        | [`proto/`](proto/)               | **The Glue.** Network messages and serialization.                                                                       | [`lib.rs`](proto/src/lib.rs) (structs)                                                                                    |
 | **lobby_worker** | [`lobby_worker/`](lobby_worker/) | **The Lobby.** HTTP routing, match-code generation, and the static front-end (the JS FSM driver). Re-exports `MatchDO`. | [`src/lib.rs`](lobby_worker/src/lib.rs) (router)<br>[`script.js`](lobby_worker/script.js) (FSM driver)                    |
 
----
-
-## How It Works
-
-### 1. The Game Loop (`game_core`)
-
-The simulation is deterministic and frame-independent. It uses a fixed timestep (60Hz) with an accumulator to ensure physics consistency across different frame rates.
-
-- **Entry Point:** [`Simulation::step`](game_core/src/simulation.rs)
-- **Physics:** [`systems/movement.rs`](game_core/src/systems/movement.rs) handles movement, [`systems/collision.rs`](game_core/src/systems/collision.rs) handles bounces.
-- **Entities:** plain structs — one `Ball` and up to two `Paddle`s held as fields on `Simulation` (no ECS), advanced by the systems pipeline.
-
-### 2. The Server (`server_do`)
-
-Each game match runs in a Cloudflare **Durable Object** (DO). The DO maintains the authoritative state and runs the `step` function 60 times a second.
-
-- **Tick Loop:** The server calls `GameState::step` which delegates to `Simulation::step`.
-- **Broadcasting:** Every 3rd tick (20Hz), it sends a snapshot to all clients via `broadcast_state`.
-
-> [!NOTE]
-> **Edge Latency Nuance:** While Durable Objects run "at the edge," each specific match runs in a **single location** — wherever Cloudflare first instantiates the DO (typically near whoever created the match). Frame updates still suffer light-speed latency for players far from that data center. Region-aware DO placement (so both players land near a shared region) is a possible future improvement — see [docs/BACKLOG.md](docs/BACKLOG.md).
-
-### 3. The Client (`client_wasm`)
-
-The client needs to be smooth (120Hz+) even though server snapshots only arrive at 20Hz.
-
-- **Own paddle:** the client integrates its own paddle locally from input, so the player feels zero latency without any prediction/reconciliation machinery.
-- **Interpolation:** the opponent paddle and ball are interpolated and exponentially smoothed from 20Hz server snapshots ([`state.rs`](client_wasm/src/state.rs)).
-- **Rendering:** a small Canvas2D renderer ([`canvas2d.rs`](client_wasm/src/canvas2d.rs)) draws the arena, paddles, and ball each frame.
-
-### 4. Networking (`proto`)
-
-We use [postcard](https://github.com/jamesmunns/postcard) for efficient binary serialization over WebSockets.
-
-- **C2S (Client to Server):** Input, Join, Ping.
-- **S2C (Server to Client):** GameState, Welcome, GameOver.
-- **Definitions:** See [`proto/src/lib.rs`](proto/src/lib.rs).
-
-### 5. Game States (Client FSM)
-
-The client flow — menus → matchmaking → gameplay, plus local pause and multiplayer reconnect — is a finite state machine: valid transitions live in Rust ([`fsm.rs`](client_wasm/src/fsm.rs)), side effects in the JS wrapper. See **[docs/STATE_MACHINE.md](docs/STATE_MACHINE.md)** for the states, the transition lock, the pause/reconnect behaviour, and the full diagram (kept there as the single source so the two don't drift).
+The `worker/` directory holds the wasm-pack build output (`pkg/`, gitignored) plus [`index.js`](worker/index.js), the Worker entry shim that initialises the WASM and wires the Durable Object lifecycle.
 
 ---
 

@@ -42,17 +42,6 @@ Read before substantial work:
 - Each match is one Durable Object instance. DO handlers must not panic, and must not hold a `RefCell` borrow across an `.await` (see the alarm handler in `server_do/src/lib.rs`).
 - The client FSM logic lives in Rust (`client_wasm/src/fsm.rs`); its side effects live in JS (`lobby_worker/script.js`). See `docs/STATE_MACHINE.md`.
 
-## Code Map
-
-| Path            | What                                                                                                                                                                 |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `game_core/`    | Shared struct-based simulation: entities (ball, paddles), systems (input → movement → collision → scoring), config, determinism. The heart.                          |
-| `proto/`        | `postcard` wire protocol — `C2S`, `S2C`, `GameStateSnapshot`.                                                                                                        |
-| `client_wasm/`  | Browser client: Canvas2D renderer (`canvas2d.rs`), snapshot interpolation (`state.rs`), FSM (`fsm.rs`), local AI game (`simulation.rs`).                             |
-| `server_do/`    | Cloudflare Durable Object — authoritative match server (`MatchDO`, `game_state.rs`).                                                                                 |
-| `lobby_worker/` | HTTP router (`/create`, `/join/:code`, `/ws/:code`), match-code generation, and the static front-end (`index.html`, `style.css`, `script.js`). Re-exports `MatchDO`. |
-| `worker/`       | wasm-pack build output (`pkg/`, gitignored) plus `index.js`, the Worker entry shim that initialises the WASM and wires the Durable Object lifecycle hooks.           |
-
 ## Tests
 
 - Rust tests are inline `#[cfg(test)]` modules co-located with the code. Run `cargo test --workspace`. `game_core` physics, the FSM transition table, and the server match lifecycle including reconnect (`server_do/src/tests.rs`) are well covered.
