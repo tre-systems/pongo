@@ -13,7 +13,9 @@ export default {
       await ensureInit();
       return await wasmFetch(req, env, ctx);
     } catch (error) {
-      return new Response(`Error: ${error.message}\n${error.stack}`, {
+      // Log details server-side; don't leak internals (message/stack) to clients.
+      console.error("Worker fetch error:", error);
+      return new Response("Internal error", {
         status: 500,
         headers: { "Content-Type": "text/plain" },
       });

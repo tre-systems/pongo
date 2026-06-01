@@ -7,7 +7,7 @@
 use postcard::{from_bytes, to_allocvec};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GameStateSnapshot {
     pub tick: u32,
     pub ball_x: f32,
@@ -20,7 +20,7 @@ pub struct GameStateSnapshot {
     pub score_right: u8,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum C2S {
     /// Join a match. `code` mirrors the URL match code; the server routes by
     /// URL and currently ignores this field.
@@ -37,7 +37,7 @@ pub enum C2S {
     Restart,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum S2C {
     /// Welcome message with player assignment
     Welcome {
@@ -150,5 +150,98 @@ mod tests {
             }
             _ => panic!("Message type mismatch"),
         }
+    }
+
+    #[test]
+    fn test_c2s_roundtrip_all_variants() {
+        let msgs = [
+            C2S::Join { code: *b"AB12Z" },
+            C2S::Input {
+                player_id: 1,
+                y: -3.5,
+                seq: 42,
+            },
+            C2S::Ping { t_ms: 123_456 },
+            C2S::Restart,
+        ];
+        for msg in msgs {
+            let decoded = C2S::from_bytes(&msg.to_bytes().unwrap()).unwrap();
+            assert_eq!(msg, decoded);
+        }
+    }
+
+    #[test]
+    fn test_s2c_roundtrip_all_variants() {
+        let msgs = [
+            S2C::Welcome { player_id: 1 },
+            S2C::MatchFound,
+            S2C::Countdown { seconds: 3 },
+            S2C::GameStart,
+            S2C::GameState(GameStateSnapshot {
+                tick: 7,
+                ball_x: 1.0,
+                ball_y: 2.0,
+                ball_vx: -3.0,
+                ball_vy: 4.0,
+                paddle_left_y: 5.0,
+                paddle_right_y: 6.0,
+                score_left: 2,
+                score_right: 1,
+            }),
+            S2C::GameOver { winner: 0 },
+            S2C::OpponentDisconnected,
+            S2C::Pong { t_ms: 999 },
+            S2C::OpponentReconnecting,
+            S2C::OpponentReconnected,
+        ];
+        for msg in msgs {
+            let decoded = S2C::from_bytes(&msg.to_bytes().unwrap()).unwrap();
+            assert_eq!(msg, decoded);
+        }
+    }
+
+    // Postcard encodes each enum variant by its positional index, and clients stay
+    // connected across deploys, so variants are append-only and must never be
+    // reordered. These assertions lock the current order: inserting or moving a
+    // variant shifts a discriminant byte and fails here on purpose.
+    #[test]
+    fn test_wire_variant_indices_are_stable() {
+        let c2s_index = |m: &C2S| m.to_bytes().unwrap()[0];
+        assert_eq!(c2s_index(&C2S::Join { code: [0; 5] }), 0);
+        assert_eq!(
+            c2s_index(&C2S::Input {
+                player_id: 0,
+                y: 0.0,
+                seq: 0
+            }),
+            1
+        );
+        assert_eq!(c2s_index(&C2S::Ping { t_ms: 0 }), 2);
+        assert_eq!(c2s_index(&C2S::Restart), 3);
+
+        let s2c_index = |m: &S2C| m.to_bytes().unwrap()[0];
+        assert_eq!(s2c_index(&S2C::Welcome { player_id: 0 }), 0);
+        assert_eq!(s2c_index(&S2C::MatchFound), 1);
+        assert_eq!(s2c_index(&S2C::Countdown { seconds: 0 }), 2);
+        assert_eq!(s2c_index(&S2C::GameStart), 3);
+        assert_eq!(
+            s2c_index(&S2C::GameState(GameStateSnapshot {
+                tick: 0,
+                ball_x: 0.0,
+                ball_y: 0.0,
+                ball_vx: 0.0,
+                ball_vy: 0.0,
+                paddle_left_y: 0.0,
+                paddle_right_y: 0.0,
+                score_left: 0,
+                score_right: 0,
+            })),
+            4
+        );
+        assert_eq!(s2c_index(&S2C::GameOver { winner: 0 }), 5);
+        assert_eq!(s2c_index(&S2C::OpponentDisconnected), 6);
+        assert_eq!(s2c_index(&S2C::Pong { t_ms: 0 }), 7);
+        assert_eq!(s2c_index(&S2C::OpponentReconnecting), 8);
+        assert_eq!(s2c_index(&S2C::OpponentReconnected), 9);
     }
 }
