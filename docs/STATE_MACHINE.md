@@ -9,9 +9,9 @@ Rust answers "is this transition allowed?"; JavaScript performs "what happens on
 
 ## States and actions
 
-`FsmState` (`client_wasm/src/fsm.rs`): `Idle`, `CountdownLocal`, `PlayingLocal`, `GameOverLocal`, `Connecting`, `Waiting`, `CountdownMulti`, `PlayingMulti`, `GameOverMulti`, `Disconnected`.
+`FsmState` (`client_wasm/src/fsm.rs`): `Idle`, `CountdownLocal`, `PlayingLocal`, `Paused`, `GameOverLocal`, `Connecting`, `Waiting`, `CountdownMulti`, `PlayingMulti`, `GameOverMulti`, `Disconnected`, `Reconnecting`.
 
-`GameAction`: `StartLocal`, `CreateMatch`, `JoinMatch`, `CountdownDone`, `Quit`, `GameOver`, `Connected`, `ConnectionFailed`, `OpponentJoined`, `Disconnected`, `Leave`, `PlayAgain`, `RematchStarted`.
+`GameAction`: `StartLocal`, `CreateMatch`, `JoinMatch`, `CountdownDone`, `Quit`, `GameOver`, `Connected`, `ConnectionFailed`, `OpponentJoined`, `Disconnected`, `Leave`, `PlayAgain`, `RematchStarted`, `Pause`, `Resume`, `ConnectionLost`, `Reconnected`, `ReconnectFailed`.
 
 `GameFsm::get_next_state` is the single transition table; invalid `state + action` pairs are rejected. The FSM is exposed to JS via `wasm_bindgen` (`transition_str`, `state`) and is fully unit-tested in `fsm.rs`.
 
@@ -26,6 +26,8 @@ stateDiagram-v2
 
     state "Local Game" as Local {
         CountdownLocal --> PlayingLocal: CountdownDone
+        PlayingLocal --> Paused: Pause
+        Paused --> PlayingLocal: Resume
         PlayingLocal --> GameOverLocal: GameOver
         GameOverLocal --> CountdownLocal: PlayAgain
     }
@@ -39,6 +41,10 @@ stateDiagram-v2
 
         PlayingMulti --> GameOverMulti: GameOver
         GameOverMulti --> CountdownMulti: RematchStarted
+
+        PlayingMulti --> Reconnecting: ConnectionLost
+        Reconnecting --> CountdownMulti: Reconnected
+        Reconnecting --> Disconnected: ReconnectFailed
     }
 
     Local --> Idle: Quit / Leave
@@ -64,4 +70,10 @@ The `isTransitioning` lock serialises transitions so that rapid events — for e
 - The FSM is exported from `client_wasm`, but the Rust `Client` simulation does not read it: the render/sim loop keys off presence checks (`local_game.is_some()`, `predictor.is_active()`) rather than the FSM state. The FSM governs UI and flow in JS, not the Rust simulation.
 - A `GameState` object in `script.js` mirrors `FsmState` for DOM/CSS use.
 
-Forward-looking changes — a `Paused` state for local play, and a `Reconnecting` grace state instead of dropping straight to `Disconnected` on transient packet loss — are tracked in `docs/BACKLOG.md`.
+## Pause (local games)
+
+`PlayingLocal` can transition to `Paused` (via the pause button or the `Escape`/`P` keys) and back with `Resume`. Pausing stops the render loop, which freezes the local simulation; resuming calls `reset_sim_timing` so the first frame doesn't accumulate a large `dt` and fast-forward the ball. Pause is local-only — multiplayer can't pause a live opponent — so the action is not valid from `PlayingMulti`.
+
+## Reconnect (multiplayer)
+
+When a multiplayer socket drops mid-match, the client goes to `Reconnecting` (via `ConnectionLost`) rather than straight to `Disconnected`. It shows a "reconnecting" overlay and retries the WebSocket within the server's grace window; the server (`server_do`) holds the dropped player's slot and freezes the sim (`MatchState::Paused`) until they return or the grace period (`RECONNECT_GRACE_MS`) expires. A successful rejoin resumes via a fresh ready-countdown (`Reconnected` → `CountdownMulti`); exhausting the retries ends the match (`ReconnectFailed` → `Disconnected`). The still-connected player sees an "opponent reconnecting" overlay driven by the `OpponentReconnecting` / `OpponentReconnected` messages.

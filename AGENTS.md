@@ -23,7 +23,7 @@ Read before substantial work:
 
 - Standard gate: `npm run test:all` — runs `prettier --check`, `cargo fmt --check`, `cargo check --workspace`, `cargo clippy --workspace -- -D warnings`, and `cargo test --workspace`. This should pass before every push.
 - The husky `pre-commit` hook runs `lint-staged` + `cargo fmt --check` + `cargo check` + `cargo clippy -D warnings` + `cargo test --workspace`. Do not bypass with `--no-verify` unless the user explicitly asks.
-- CI (`.github/workflows/ci.yml`) runs `cargo fmt --check`, clippy, `cargo test --workspace`, and a `wasm32-unknown-unknown` build check, then deploys on push to `main`. CI does **not** currently run `prettier --check` or the wasm-only `wasm_bindgen_test`s — `npm run test:all` covers prettier locally (see `docs/BACKLOG.md`).
+- CI (`.github/workflows/ci.yml`): the `check` job runs `cargo fmt --check`, `prettier --check`, clippy, `cargo test --workspace`, and a `wasm32-unknown-unknown` build check, and gates the deploy on push to `main`. Separate non-gating jobs run the wasm-bindgen browser tests (`wasm-test`) and the Playwright e2e smoke (`e2e`), so a headless-browser hiccup never blocks a deploy.
 
 ## Build & Run
 
@@ -54,9 +54,9 @@ Read before substantial work:
 
 ## Tests
 
-- Rust tests are inline `#[cfg(test)]` modules co-located with the code. Run `cargo test --workspace`. `game_core` physics, the FSM transition table, and the server match lifecycle (`server_do/src/tests.rs`) are well covered.
-- `client_wasm/src/prediction.rs` has `#[wasm_bindgen_test]`s that only run under `wasm-pack test`, not `cargo test`.
-- There are no JS / e2e / browser tests yet — `lobby_worker/script.js` (the FSM-driving glue) is untested. See `docs/BACKLOG.md`.
+- Rust tests are inline `#[cfg(test)]` modules co-located with the code. Run `cargo test --workspace`. `game_core` physics, the FSM transition table, and the server match lifecycle including reconnect (`server_do/src/tests.rs`) are well covered.
+- `client_wasm/src/prediction.rs` has `#[wasm_bindgen_test]`s run via `wasm-pack test --headless --firefox client_wasm` (also the CI `wasm-test` job).
+- End-to-end browser tests live in `tests/e2e/` (Playwright): `npm run test:e2e` (first run: `npm run test:e2e:install`). It boots `wrangler dev` automatically. The gameplay specs need WebGPU and skip where it's unavailable (e.g. some headless CI runners).
 
 ## Commits
 
