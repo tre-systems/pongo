@@ -5,7 +5,6 @@
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
-/// Game states
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FsmState {
@@ -23,7 +22,6 @@ pub enum FsmState {
     Reconnecting,
 }
 
-/// Actions that trigger state transitions
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GameAction {
@@ -54,7 +52,6 @@ pub struct TransitionResult {
     success: bool,
     from_state: FsmState,
     to_state: FsmState,
-    action: GameAction,
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
@@ -64,6 +61,8 @@ impl TransitionResult {
         self.success
     }
 
+    // Named from_state to match the JS-read property; clippy would otherwise
+    // flag the from_* getter as constructor-style.
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen(getter))]
     #[allow(clippy::wrong_self_convention)]
     pub fn from_state(&self) -> FsmState {
@@ -73,11 +72,6 @@ impl TransitionResult {
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen(getter))]
     pub fn to_state(&self) -> FsmState {
         self.to_state
-    }
-
-    #[cfg_attr(target_arch = "wasm32", wasm_bindgen(getter))]
-    pub fn action(&self) -> GameAction {
-        self.action
     }
 }
 
@@ -96,20 +90,14 @@ impl GameFsm {
         }
     }
 
-    /// Get current state
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen(getter))]
     pub fn state(&self) -> FsmState {
         self.state
     }
 
-    /// Get current state as string (for JS interop)
+    /// Current state as string (for JS interop)
     pub fn state_string(&self) -> String {
         format!("{:?}", self.state)
-    }
-
-    /// Check if a transition is valid
-    pub fn can_transition(&self, action: GameAction) -> bool {
-        self.get_next_state(action).is_some()
     }
 
     /// Attempt a transition
@@ -122,14 +110,12 @@ impl GameFsm {
                 success: true,
                 from_state,
                 to_state: next_state,
-                action,
             }
         } else {
             TransitionResult {
                 success: false,
                 from_state,
                 to_state: from_state,
-                action,
             }
         }
     }
@@ -155,19 +141,20 @@ impl GameFsm {
             "CONNECTION_LOST" => GameAction::ConnectionLost,
             "RECONNECTED" => GameAction::Reconnected,
             "RECONNECT_FAILED" => GameAction::ReconnectFailed,
+            // An unrecognized action string is a caller bug; report it as a
+            // failed transition so JS's `if (!result.success)` branch fires.
             _ => {
                 return TransitionResult {
                     success: false,
                     from_state: self.state,
                     to_state: self.state,
-                    action: GameAction::Leave, // Default, won't be used
                 };
             }
         };
         self.transition(action)
     }
 
-    /// Get next state for a given action (if valid)
+    /// Next state for a given action, or None if the transition is invalid.
     fn get_next_state(&self, action: GameAction) -> Option<FsmState> {
         match (self.state, action) {
             // From Idle
@@ -228,37 +215,6 @@ impl GameFsm {
             // Invalid transition
             _ => None,
         }
-    }
-
-    /// Reset to Idle state
-    pub fn reset(&mut self) {
-        self.state = FsmState::Idle;
-    }
-
-    /// Check if currently in a playing state
-    pub fn is_playing(&self) -> bool {
-        matches!(self.state, FsmState::PlayingLocal | FsmState::PlayingMulti)
-    }
-
-    /// Check if in a multiplayer state
-    pub fn is_multiplayer(&self) -> bool {
-        matches!(
-            self.state,
-            FsmState::Connecting
-                | FsmState::Waiting
-                | FsmState::CountdownMulti
-                | FsmState::PlayingMulti
-                | FsmState::GameOverMulti
-                | FsmState::Reconnecting
-        )
-    }
-
-    /// Check if in game over state
-    pub fn is_game_over(&self) -> bool {
-        matches!(
-            self.state,
-            FsmState::GameOverLocal | FsmState::GameOverMulti
-        )
     }
 }
 

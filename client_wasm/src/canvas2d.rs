@@ -1,16 +1,16 @@
-//! Canvas2D renderer. Draws the ball and paddles from the interpolated game
-//! state. Canvas2D is universally supported and tiny — no GPU setup needed.
+//! Canvas2D renderer: draws the ball and paddles from the interpolated game state.
 
 use crate::state::GameState;
 use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
-// Arena + entity sizes (units), mirroring game_core's Config.
-const ARENA_W: f32 = 32.0;
-const ARENA_H: f32 = 24.0;
-const PADDLE_W: f32 = 0.8;
-const PADDLE_H: f32 = 4.0;
-const BALL_R: f32 = 0.5;
+// Arena + entity sizes (units) come from game_core so the renderer never drifts
+// from the authoritative simulation. Paddle X is the fixed inset Config uses.
+const ARENA_W: f32 = game_core::Params::ARENA_WIDTH;
+const ARENA_H: f32 = game_core::Params::ARENA_HEIGHT;
+const PADDLE_W: f32 = game_core::Params::PADDLE_WIDTH;
+const PADDLE_H: f32 = game_core::Params::PADDLE_HEIGHT;
+const BALL_R: f32 = game_core::Params::BALL_RADIUS;
 const PADDLE_LEFT_X: f32 = 1.5;
 const PADDLE_RIGHT_X: f32 = ARENA_W - 1.5;
 

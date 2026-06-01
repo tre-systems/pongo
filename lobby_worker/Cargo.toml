@@ -14,6 +14,7 @@ crate-type = ["cdylib", "rlib"]
 worker = "0.6"
 serde_json = "1.0"
 server_do = { path = "../server_do" }
+# Enables getrandom's js backend so rand compiles for wasm32 (transitive dep).
 getrandom = { version = "0.2", features = ["js"] }
 rand = "0.8"
 

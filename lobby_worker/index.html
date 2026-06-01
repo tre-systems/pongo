@@ -62,8 +62,8 @@
       <div id="sidePanel">
         <!-- Mobile Touch Controls - Left Side -->
         <div class="touch-controls left">
-          <button class="touch-btn" data-dir="up">▲</button>
-          <button class="touch-btn" data-dir="down">▼</button>
+          <button class="touch-btn" data-dir="up" aria-label="Move up">▲</button>
+          <button class="touch-btn" data-dir="down" aria-label="Move down">▼</button>
         </div>
 
         <!-- Single Control Card -->
@@ -89,14 +89,11 @@
 
           <button id="playBtn" disabled>Play Now</button>
 
-          <!-- Hidden input to store match code -->
           <input type="text" id="matchCode" maxlength="5" />
 
-          <!-- Multiplayer: Create match button -->
           <div id="lobbyControls">
             <button id="createBtn" class="btn-challenge">Challenge a Friend</button>
 
-            <!-- Join with Code -->
             <div class="join-code-container">
               <button id="joinCodeToggle" class="join-code-toggle">Join with Code</button>
               <div id="joinCodeForm" class="join-code-form">
@@ -114,9 +111,7 @@
             </div>
           </div>
 
-          <!-- Pause/Resume button for local games -->
           <button id="pauseBtn" class="btn-pause" style="display: none">Pause</button>
-          <!-- Quit button for local games -->
           <button id="quitBtn" class="btn-quit" style="display: none">Quit Game</button>
           <!-- Waiting for opponent -->
           <div id="activeMatchControls" style="display: none">
@@ -126,7 +121,12 @@
                 <div class="game-code-label">Game Code</div>
                 <div class="game-code-row">
                   <div id="gameCodeDisplay" class="game-code-value">-----</div>
-                  <button id="copyCodeBtn" class="btn-icon" title="Copy Code">
+                  <button
+                    id="copyCodeBtn"
+                    class="btn-icon"
+                    title="Copy Code"
+                    aria-label="Copy code"
+                  >
                     <svg
                       width="20"
                       height="20"
@@ -145,6 +145,7 @@
                     id="shareLinkBtn"
                     class="btn-icon btn-icon-primary"
                     title="Share"
+                    aria-label="Share"
                     style="display: none"
                   >
                     <svg
@@ -167,7 +168,6 @@
                 </div>
               </div>
 
-              <!-- Hidden input to store share link -->
               <input type="text" id="shareLinkInput" readonly style="display: none" />
 
               <div
@@ -192,7 +192,6 @@
             W / S or ↑ / ↓ to Move
           </div>
 
-          <!-- Ko-fi Support Button -->
           <div style="margin-top: 10px; display: flex; justify-content: center">
             <a href="https://ko-fi.com/N4N31DPNUS" target="_blank" rel="noopener noreferrer">
               <img
@@ -207,8 +206,8 @@
 
         <!-- Mobile Touch Controls - Right Side -->
         <div class="touch-controls right">
-          <button class="touch-btn" data-dir="up">▲</button>
-          <button class="touch-btn" data-dir="down">▼</button>
+          <button class="touch-btn" data-dir="up" aria-label="Move up">▲</button>
+          <button class="touch-btn" data-dir="down" aria-label="Move down">▼</button>
         </div>
       </div>
     </div>

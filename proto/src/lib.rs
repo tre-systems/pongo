@@ -1,14 +1,13 @@
-//! Network protocol for Pong game
+//! Network protocol for Pong game (postcard-serialised, append-only).
 //!
-//! Uses postcard for efficient binary serialization
+//! Enum variants and struct fields are append-only: postcard encodes the
+//! variant index positionally, so reordering or retyping breaks clients that
+//! connect across a deploy.
 
 use postcard::{from_bytes, to_allocvec};
+use serde::{Deserialize, Serialize};
 
-// ============================================================================
-// Shared Structures
-// ============================================================================
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameStateSnapshot {
     pub tick: u32,
     pub ball_x: f32,
@@ -21,17 +20,14 @@ pub struct GameStateSnapshot {
     pub score_right: u8,
 }
 
-// ============================================================================
-// C2S Messages (Client to Server)
-// ============================================================================
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum C2S {
-    /// Join a match with code
+    /// Join a match. `code` mirrors the URL match code; the server routes by
+    /// URL and currently ignores this field.
     Join { code: [u8; 5] },
 
-    /// Paddle input: absolute Y position
-    /// seq: Client-side sequence number
+    /// Paddle input: absolute Y position.
+    /// `seq` is a client-side sequence number, currently unused by the server.
     Input { player_id: u8, y: f32, seq: u32 },
 
     /// Ping for latency measurement
@@ -41,11 +37,7 @@ pub enum C2S {
     Restart,
 }
 
-// ============================================================================
-// S2C Messages (Server to Client)
-// ============================================================================
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum S2C {
     /// Welcome message with player assignment
     Welcome {
@@ -76,36 +68,27 @@ pub enum S2C {
     Pong { t_ms: u32 },
 
     /// Opponent dropped; the match is paused awaiting their reconnect.
-    /// (New variants are appended to keep postcard variant indices stable.)
     OpponentReconnecting,
 
     /// Opponent reconnected; the match is about to resume.
     OpponentReconnected,
 }
 
-// ============================================================================
-// Serialization Helpers
-// ============================================================================
-
 impl C2S {
-    /// Serialize C2S message to bytes
     pub fn to_bytes(&self) -> Result<Vec<u8>, postcard::Error> {
         to_allocvec(self)
     }
 
-    /// Deserialize C2S message from bytes
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, postcard::Error> {
         from_bytes(bytes)
     }
 }
 
 impl S2C {
-    /// Serialize S2C message to bytes
     pub fn to_bytes(&self) -> Result<Vec<u8>, postcard::Error> {
         to_allocvec(self)
     }
 
-    /// Deserialize S2C message from bytes
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, postcard::Error> {
         from_bytes(bytes)
     }

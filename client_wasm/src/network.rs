@@ -20,8 +20,6 @@ pub fn handle_message(msg: S2C, game_state: &mut GameState) -> Result<(), String
         S2C::GameStart => {
             game_state.reset();
             game_state.match_event = MatchEvent::GameStart;
-            game_state.winner = None;
-            game_state.set_scores(0, 0);
         }
         S2C::GameState(snapshot) => {
             game_state.set_scores(snapshot.score_left, snapshot.score_right);
@@ -47,34 +45,31 @@ pub fn handle_message(msg: S2C, game_state: &mut GameState) -> Result<(), String
     Ok(())
 }
 
-/// Create join message bytes
+/// Build a Join message. The match code must be exactly 5 characters.
 pub fn create_join_message(code: &str) -> Result<Vec<u8>, String> {
     let code_bytes: Vec<u8> = code.bytes().take(5).collect();
     if code_bytes.len() != 5 {
         return Err("Match code must be exactly 5 characters".to_string());
     }
     let mut code_array = [0u8; 5];
-    code_array.copy_from_slice(&code_bytes[..5]);
+    code_array.copy_from_slice(&code_bytes);
     C2S::Join { code: code_array }
         .to_bytes()
         .map_err(|e| format!("Failed to serialize join message: {:?}", e))
 }
 
-/// Create input message bytes
 pub fn create_input_message(player_id: u8, y: f32, seq: u32) -> Result<Vec<u8>, String> {
     C2S::Input { player_id, y, seq }
         .to_bytes()
         .map_err(|e| format!("Failed to serialize input message: {:?}", e))
 }
 
-/// Create restart message bytes
 pub fn create_restart_message() -> Result<Vec<u8>, String> {
     C2S::Restart
         .to_bytes()
         .map_err(|e| format!("Failed to serialize restart message: {:?}", e))
 }
 
-/// Create ping message bytes
 pub fn create_ping_message(t_ms: u32) -> Result<Vec<u8>, String> {
     C2S::Ping { t_ms }
         .to_bytes()

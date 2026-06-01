@@ -33,23 +33,16 @@ use web_sys::{window, HtmlCanvasElement, KeyboardEvent};
 #[cfg(target_arch = "wasm32")]
 pub struct Client {
     renderer: Renderer,
-    // Game state
     game_state: GameState,
-    // Input state
     paddle_dir: i8, // -1 = up, 0 = stop, 1 = down
-    // Frame timing
     last_frame_time: f64,
     last_sim_time: f64,
     sim_accumulator: f32,
-    // Metrics
     fps: f32,
     fps_frame_count: u32,
     fps_last_update: f64,
     ping_ms: f32,
     ping_pending: Option<f64>,
-    update_display_ms: f32,
-    update_last_display: f64,
-    // Local game
     local_game: Option<LocalGame>,
     // Own paddle: client-authoritative, integrated locally for a zero-latency feel
     local_paddle_y: f32,
@@ -82,8 +75,6 @@ impl WasmClient {
             fps_last_update: 0.0,
             ping_ms: 0.0,
             ping_pending: None,
-            update_display_ms: 0.0,
-            update_last_display: 0.0,
             local_game: None,
             local_paddle_y: 12.0,
             local_paddle_initialized: false,
@@ -146,8 +137,6 @@ impl WasmClient {
                     });
                 }
                 client.game_state.set_scores(score_left, score_right);
-
-                // Check for win condition reset
             }
         }
     }
@@ -166,13 +155,14 @@ impl WasmClient {
         };
         client.last_frame_time = now_ms;
 
-        // Update local paddle for immediate response (works for both local and multiplayer)
-        const PADDLE_SPEED: f32 = 18.0;
-        const ARENA_HEIGHT: f32 = 24.0;
-        const PADDLE_HEIGHT: f32 = 4.0;
+        // Integrate the local paddle each frame; this drives our own paddle in
+        // multiplayer and feeds the local-game input queue. Speed and bounds come
+        // from game_core::Params so the client matches the authoritative server.
+        const PADDLE_SPEED: f32 = game_core::Params::PADDLE_SPEED;
+        const ARENA_HEIGHT: f32 = game_core::Params::ARENA_HEIGHT;
+        const PADDLE_HEIGHT: f32 = game_core::Params::PADDLE_HEIGHT;
         let half_height = PADDLE_HEIGHT / 2.0;
 
-        // Simple local integration (client authority)
         client.local_paddle_y += client.paddle_dir as f32 * PADDLE_SPEED * render_dt;
         client.local_paddle_y = client
             .local_paddle_y
@@ -186,11 +176,6 @@ impl WasmClient {
             client.fps = client.fps_frame_count as f32 / time_diff_sec as f32;
             client.fps_frame_count = 0;
             client.fps_last_update = now_ms;
-        }
-
-        if now_ms - client.update_last_display >= 200.0 {
-            client.update_display_ms = client.game_state.time_since_update() * 1000.0;
-            client.update_last_display = now_ms;
         }
 
         client.game_state.update_interpolation(render_dt);
@@ -242,15 +227,14 @@ impl WasmClient {
 
         // On the first snapshot of a match, snap our own paddle to the server's position.
         if is_game_state && client.local_game.is_none() && !client.local_paddle_initialized {
-            if let Some(snapshot) = client.game_state.get_current_snapshot() {
-                let pid = client.game_state.get_player_id().unwrap_or(0);
-                client.local_paddle_y = if pid == 0 {
-                    snapshot.paddle_left_y
-                } else {
-                    snapshot.paddle_right_y
-                };
-                client.local_paddle_initialized = true;
-            }
+            let snapshot = client.game_state.get_current_snapshot();
+            let pid = client.game_state.get_player_id().unwrap_or(0);
+            client.local_paddle_y = if pid == 0 {
+                snapshot.paddle_left_y
+            } else {
+                snapshot.paddle_right_y
+            };
+            client.local_paddle_initialized = true;
         }
 
         Ok(())
@@ -377,9 +361,9 @@ impl WasmClient {
     #[wasm_bindgen]
     pub fn get_metrics(&self) -> Vec<f32> {
         if self.0.local_game.is_some() {
-            vec![self.0.fps, 0.0, 0.0]
+            vec![self.0.fps, 0.0]
         } else {
-            vec![self.0.fps, self.0.ping_ms, self.0.update_display_ms]
+            vec![self.0.fps, self.0.ping_ms]
         }
     }
 
@@ -392,14 +376,12 @@ impl WasmClient {
 
     #[wasm_bindgen]
     pub fn on_key_down(&mut self, event: KeyboardEvent) {
-        let key = input::get_key_from_event(&event);
-        self.0.paddle_dir = input::handle_key_down(&key, self.0.paddle_dir);
+        self.0.paddle_dir = input::handle_key_down(&event.key(), self.0.paddle_dir);
     }
 
     #[wasm_bindgen]
     pub fn on_key_up(&mut self, event: KeyboardEvent) {
-        let key = input::get_key_from_event(&event);
-        self.0.paddle_dir = input::handle_key_up(&key, self.0.paddle_dir);
+        self.0.paddle_dir = input::handle_key_up(&event.key(), self.0.paddle_dir);
     }
 
     #[wasm_bindgen]

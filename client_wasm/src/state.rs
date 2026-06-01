@@ -18,10 +18,6 @@ pub enum MatchEvent {
 pub struct GameState {
     // Current authoritative state from server
     current: GameStateSnapshot,
-    // Previous state for interpolation
-    previous: GameStateSnapshot,
-    // Interpolation time (0.0 = previous, 1.0 = current)
-    interpolation_alpha: f32,
     // Time since last state update
     time_since_update: f32,
     // Score (doesn't need interpolation)
@@ -39,23 +35,25 @@ pub struct GameState {
     pub match_event: MatchEvent,
 }
 
+/// Initial snapshot with the ball and both paddles centred in the arena.
+fn initial_snapshot() -> GameStateSnapshot {
+    GameStateSnapshot {
+        ball_x: 16.0,
+        ball_y: 12.0,
+        paddle_left_y: 12.0,
+        paddle_right_y: 12.0,
+        ball_vx: 0.0,
+        ball_vy: 0.0,
+        tick: 0,
+        score_left: 0,
+        score_right: 0,
+    }
+}
+
 impl GameState {
     pub fn new() -> Self {
-        let initial = GameStateSnapshot {
-            ball_x: 16.0,
-            ball_y: 12.0,
-            paddle_left_y: 12.0,
-            paddle_right_y: 12.0,
-            ball_vx: 0.0,
-            ball_vy: 0.0,
-            tick: 0,
-            score_left: 0,
-            score_right: 0,
-        };
         Self {
-            current: initial.clone(),
-            previous: initial,
-            interpolation_alpha: 1.0,
+            current: initial_snapshot(),
             time_since_update: 0.0,
             score_left: 0,
             score_right: 0,
@@ -70,20 +68,7 @@ impl GameState {
     }
 
     pub fn reset(&mut self) {
-        let initial = GameStateSnapshot {
-            ball_x: 16.0,
-            ball_y: 12.0,
-            paddle_left_y: 12.0,
-            paddle_right_y: 12.0,
-            ball_vx: 0.0,
-            ball_vy: 0.0,
-            tick: 0,
-            score_left: 0,
-            score_right: 0,
-        };
-        self.current = initial.clone();
-        self.previous = initial;
-        self.interpolation_alpha = 1.0;
+        self.current = initial_snapshot();
         self.time_since_update = 0.0;
         self.score_left = 0;
         self.score_right = 0;
@@ -95,13 +80,11 @@ impl GameState {
         self.match_event = MatchEvent::None;
     }
 
-    /// Update interpolation based on elapsed time
-    /// Target: 60fps render, 20-60Hz server updates
+    /// Update interpolation based on elapsed time.
+    /// Server broadcasts at ~20Hz (every 3rd 60Hz tick); render runs at the
+    /// display refresh via requestAnimationFrame.
     pub fn update_interpolation(&mut self, dt: f32) {
         self.time_since_update += dt;
-        // Server sends updates at 20Hz (50ms). Use 100ms (2x) for jitter tolerance.
-        let interpolation_duration = 0.100;
-        self.interpolation_alpha = (self.time_since_update / interpolation_duration).min(1.0);
 
         // Smoothly blend display position toward target using exponential smoothing
         // This prevents jarring jumps when new server state arrives
@@ -148,11 +131,10 @@ impl GameState {
     }
 
     pub fn set_current(&mut self, snapshot: GameStateSnapshot) {
-        // Simple version: just accept all incoming snapshots
-        self.previous = self.current.clone();
+        // Accept the snapshot as the new authoritative state and restart the
+        // smoothing window.
         self.current = snapshot;
         self.time_since_update = 0.0;
-        self.interpolation_alpha = 0.0;
     }
 
     pub fn set_scores(&mut self, left: u8, right: u8) {
@@ -176,12 +158,14 @@ impl GameState {
         self.winner = Some(winner);
     }
 
-    pub fn time_since_update(&self) -> f32 {
-        self.time_since_update
+    pub fn get_current_snapshot(&self) -> GameStateSnapshot {
+        self.current.clone()
     }
+}
 
-    pub fn get_current_snapshot(&self) -> Option<GameStateSnapshot> {
-        Some(self.current.clone())
+impl Default for GameState {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

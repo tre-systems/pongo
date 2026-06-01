@@ -86,7 +86,11 @@ try {
   await init();
 } catch (error) {
   console.error("Failed to load WASM:", error);
-  document.getElementById("status").textContent = "Failed to load game resource";
+  const playBtn = document.getElementById("playBtn");
+  if (playBtn) {
+    playBtn.textContent = "Failed to load";
+    playBtn.disabled = true;
+  }
   throw error;
 }
 
@@ -101,7 +105,6 @@ let currentMatchCode = null;
 // ========================================
 // Finite State Machine (Rust-backed)
 // ========================================
-// Map Rust FsmState enum to string names for compatibility
 const GameState = {
   IDLE: FsmState.Idle,
   COUNTDOWN_LOCAL: FsmState.CountdownLocal,
@@ -127,7 +130,6 @@ const RECONNECT_INTERVAL_MS = 1500;
 // Create Rust FSM instance (after init())
 const rustFsm = new GameFsm();
 
-// Wrapper that maintains same API but uses Rust FSM
 const FSM = {
   get state() {
     return rustFsm.state;
@@ -293,8 +295,7 @@ async function enterConnecting() {
     window.history.pushState({}, "", url);
   }
 
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  const wsUrl = `${protocol}//${window.location.host}/ws/${code}`;
+  const wsUrl = wsUrlFor(code);
 
   try {
     ws = new WebSocket(wsUrl);
@@ -347,10 +348,7 @@ async function enterCountdownMulti() {
   if (client) {
     client.reset_for_multiplayer();
   }
-  // Server drives the countdown - we just display what it sends
-  // The countdown display is handled by handleMatchEvent
-  // Wait here until game_start is received
-  // (Transition to PLAYING_MULTI is triggered by handleMatchEvent)
+  // Countdown display and the transition to PlayingMulti are driven by handleMatchEvent.
 }
 
 // Handle match events from server
@@ -431,7 +429,7 @@ function enterPlayingMulti() {
   setupInputIfNeeded();
   startRenderLoop();
   startPingInterval();
-  // Start input polling (must be called every game, not just once)
+  // Poll local input at ~30Hz while in a match.
   if (!inputIntervalId) {
     inputIntervalId = setInterval(sendInput, 33);
   }
@@ -640,6 +638,11 @@ function startPingInterval() {
 // ========================================
 // WebSocket & Input
 // ========================================
+function wsUrlFor(code) {
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${protocol}//${window.location.host}/ws/${code}`;
+}
+
 function closeWebSocket() {
   if (ws) {
     // Mark this close as intentional so the socket's onclose doesn't try to reconnect.
@@ -691,8 +694,7 @@ function attemptReconnect() {
   }
   reconnectAttempts++;
 
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  const wsUrl = `${protocol}//${window.location.host}/ws/${currentMatchCode}`;
+  const wsUrl = wsUrlFor(currentMatchCode);
 
   let sock;
   try {
@@ -854,6 +856,8 @@ function setupInputIfNeeded() {
   );
 
   // --- Touch & Mouse Slide Controls ---
+  const UP_KEY = "ArrowUp";
+  const DOWN_KEY = "ArrowDown";
   let currentTouchDir = 0;
   let isPointerDown = false;
 
@@ -879,12 +883,12 @@ function setupInputIfNeeded() {
       if (!client) return;
 
       // Release old direction
-      if (currentTouchDir === -1) client.handle_key_string("ArrowUp", false);
-      if (currentTouchDir === 1) client.handle_key_string("ArrowDown", false);
+      if (currentTouchDir === -1) client.handle_key_string(UP_KEY, false);
+      if (currentTouchDir === 1) client.handle_key_string(DOWN_KEY, false);
 
       // Press new direction
-      if (newDir === -1) client.handle_key_string("ArrowUp", true);
-      if (newDir === 1) client.handle_key_string("ArrowDown", true);
+      if (newDir === -1) client.handle_key_string(UP_KEY, true);
+      if (newDir === 1) client.handle_key_string(DOWN_KEY, true);
 
       currentTouchDir = newDir;
       sendInput();
@@ -901,8 +905,8 @@ function setupInputIfNeeded() {
 
     // Release input
     if (currentTouchDir !== 0 && client) {
-      if (currentTouchDir === -1) client.handle_key_string("ArrowUp", false);
-      if (currentTouchDir === 1) client.handle_key_string("ArrowDown", false);
+      if (currentTouchDir === -1) client.handle_key_string(UP_KEY, false);
+      if (currentTouchDir === 1) client.handle_key_string(DOWN_KEY, false);
       currentTouchDir = 0;
       sendInput();
     }
@@ -914,7 +918,8 @@ function setupInputIfNeeded() {
     (e) => {
       if (e.target.classList.contains("touch-btn")) {
         e.preventDefault();
-        isPointerDown = true; // reusing checking flag for consistency
+        // True while a touch or mouse press is held on a control.
+        isPointerDown = true;
         if (e.touches.length > 0) {
           handlePointerUpdate(e.touches[0].clientX, e.touches[0].clientY);
         }
@@ -937,13 +942,13 @@ function setupInputIfNeeded() {
     { passive: false }
   );
 
-  document.addEventListener("touchend", (e) => {
+  document.addEventListener("touchend", () => {
     if (isPointerDown) {
       handlePointerEnd();
     }
   });
 
-  document.addEventListener("touchcancel", (e) => {
+  document.addEventListener("touchcancel", () => {
     if (isPointerDown) {
       handlePointerEnd();
     }
@@ -964,7 +969,7 @@ function setupInputIfNeeded() {
     }
   });
 
-  document.addEventListener("mouseup", (e) => {
+  document.addEventListener("mouseup", () => {
     if (isPointerDown) {
       handlePointerEnd();
     }
