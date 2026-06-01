@@ -14,18 +14,21 @@
     "dev": "npx wrangler dev --assets worker/pkg",
     "deploy": "npx wrangler deploy",
     "logs": "npx wrangler tail pongo --format pretty",
+    "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install chromium",
     "prepare": "husky"
   },
   "engines": {
     "node": ">=20.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.50.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.2.7",
     "prettier": "^3.7.4"
   },
   "lint-staged": {
     "*.rs": "rustfmt",
-    "**/*": "prettier --write"
+    "**/*": "prettier --write --ignore-unknown"
   }
 }
