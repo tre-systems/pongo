@@ -18,17 +18,17 @@ Pongo is small, but it leans on a consistent set of patterns. Knowing these expl
 
 ### Simulation (`game_core`)
 
-- **One deterministic core, three hosts.** All gameplay lives in [`game_core::step`](game_core/src/lib.rs) — a pure, deterministic function (seeded RNG, fixed timestep, no I/O). It is run by everything that advances the game: the authoritative server ([`GameState::step`](server_do/src/game_state.rs)), the offline VS-AI game ([`LocalGame::step`](client_wasm/src/simulation.rs)), and the client-side predictor ([`ClientPredictor`](client_wasm/src/prediction.rs)). Determinism is the enabling property — it is what lets the client predict and reconcile against the server. **Never fork gameplay into a host; add it to `game_core` so all three stay identical.**
-- **ECS (hecs).** Entities hold components — `Paddle`, `Ball`, `PaddleIntent` ([`components.rs`](game_core/src/components.rs)); behaviour lives in ordered systems ([`systems/`](game_core/src/systems)). The pipeline order (ingest inputs → move ball → move paddles → collisions → scoring) is defined once, in `step`. Add behaviour as a system; add entity state as a component.
-- **The `Simulation` aggregate (parameter object).** The `World` plus its resources (`Time, Score, Events, NetQueue, GameRng, RespawnState`) are bundled into one [`Simulation`](game_core/src/simulation.rs) with `new(seed)` and `step(&mut self)`. Each host embeds one `Simulation` rather than threading the pieces individually. Resources are the ECS "resource" concept (state that isn't per-entity).
-- **Fixed timestep, host-owned accumulator.** `Simulation::step` advances exactly one `Params::FIXED_DT` tick — the single source for the timestep. Hosts feed real elapsed time into their own accumulator and call `step` the right number of times (the server alarm; the client `step_simulation` and predictor), so physics is frame-rate independent and reproducible.
-- **Command queue for input.** Every input source — keyboard, touch, the AI, the network — funnels through `NetQueue::push_input(player_id, y)` as an absolute target Y, and `ingest_inputs` drains it into `PaddleIntent`. The simulation never knows where input came from.
+- **One deterministic core, two hosts.** All gameplay lives in [`game_core::step`](game_core/src/lib.rs) — a pure, deterministic function (seeded RNG, fixed timestep, no I/O). It is run by the authoritative server ([`GameState::step`](server_do/src/game_state.rs)) and the offline VS-AI game ([`LocalGame::step`](client_wasm/src/simulation.rs)). The multiplayer client does **not** run it — it moves its own paddle locally and interpolates the opponent + ball from server snapshots. **Never fork gameplay into a host; add it to `game_core` so both stay identical.**
+- **Plain structs, not an ECS.** The entity set is tiny and fixed (one `Ball`, up to two `Paddle`s — [`components.rs`](game_core/src/components.rs)), so `Simulation` holds them as plain fields. Behaviour lives in ordered systems ([`systems/`](game_core/src/systems)); the pipeline order (ingest inputs → move ball → move paddles → collisions → scoring) is defined once, in `step`.
+- **The `Simulation` aggregate (parameter object).** The entities (`ball`, `paddles`) plus the resources (`Time, Score, Events, NetQueue, GameRng, RespawnState`) are bundled into one [`Simulation`](game_core/src/simulation.rs) with `new(seed)` and `step(&mut self)`. Each host embeds one `Simulation` rather than threading the pieces individually.
+- **Fixed timestep, host-owned accumulator.** `Simulation::step` advances exactly one `Params::FIXED_DT` tick — the single source for the timestep. Hosts feed real elapsed time into their own accumulator and call `step` the right number of times (the server alarm; the client's offline-game loop), so physics is frame-rate independent and reproducible.
+- **Command queue for input.** Every input source — keyboard, touch, the AI, the network — funnels through `NetQueue::push_input(player_id, y)` as an absolute target Y, and `ingest_inputs` drains it onto the matching paddle's `target_y`. The simulation never knows where input came from.
 - **Strongly-typed ids.** `PlayerId(u8)` ([`components.rs`](game_core/src/components.rs)) names a side (`PlayerId::LEFT` / `RIGHT`) so it can't be confused with a score or tick. The domain (game_core and the server's match logic) uses `PlayerId`; the wire protocol stays `u8`, converting at the boundary.
 - **Config over a constants layer.** `Params` holds the `const` tuning values; `Config` ([`config.rs`](game_core/src/config.rs)) is the cloneable runtime struct seeded from them and threaded through systems. Tune gameplay in one place.
 
 ### Networking & client
 
-- **Authoritative server, client prediction + reconciliation.** The server owns the truth; the client applies local input immediately (prediction) and snaps to server snapshots when they disagree (reconciliation). See [`prediction.rs`](client_wasm/src/prediction.rs).
+- **Authoritative server, local own-paddle + interpolation.** The server owns the truth. The client applies its _own_ paddle input locally for a zero-latency feel and interpolates the opponent + ball from 20Hz snapshots ([`state.rs`](client_wasm/src/state.rs)). There's no prediction/reconciliation layer — the client isn't authoritative over anything that affects the other player.
 - **One snapshot DTO.** [`GameStateSnapshot`](proto/src/lib.rs) is the single shape used both on the wire and for rendering; the client interpolates and exponentially smooths remote entities from it ([`state.rs`](client_wasm/src/state.rs)).
 - **Tagged-enum binary protocol, append-only.** [`proto::{C2S, S2C}`](proto/src/lib.rs) are `postcard`-serialised enums with `to_bytes`/`from_bytes` helpers. Postcard encodes the variant index positionally, so **add new variants at the end** to stay compatible with clients connected across a deploy.
 - **FSM: logic in Rust, effects in JS.** Valid states and transitions live in [`fsm.rs`](client_wasm/src/fsm.rs); side effects (DOM, sockets, timers) live in the JS wrapper. Full detail in [docs/STATE_MACHINE.md](docs/STATE_MACHINE.md).
@@ -47,8 +47,8 @@ The project is structured as a Cargo workspace with shared crates.
 
 | Crate            | Path                             | Description                                                                                                             | Key Files                                                                                              |
 | ---------------- | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| **game_core**    | [`game_core/`](game_core/)       | **The Heart.** Shared ECS logic, physics, and config.                                                                   | [`lib.rs`](game_core/src/lib.rs) (step function)<br>[`config.rs`](game_core/src/config.rs) (constants) |
-| **client_wasm**  | [`client_wasm/`](client_wasm/)   | **The Frontend.** Prediction, interpolation, and rendering.                                                             | [`lib.rs`](client_wasm/src/lib.rs) (entry)<br>[`renderer/`](client_wasm/src/renderer) (WebGPU)         |
+| **game_core**    | [`game_core/`](game_core/)       | **The Heart.** Shared struct-based simulation, physics, and config.                                                     | [`lib.rs`](game_core/src/lib.rs) (step function)<br>[`config.rs`](game_core/src/config.rs) (constants) |
+| **client_wasm**  | [`client_wasm/`](client_wasm/)   | **The Frontend.** Interpolation and Canvas2D rendering.                                                                 | [`lib.rs`](client_wasm/src/lib.rs) (entry)<br>[`canvas2d.rs`](client_wasm/src/canvas2d.rs) (renderer)  |
 | **server_do**    | [`server_do/`](server_do/)       | **The Backend.** Durable Object implementation.                                                                         | [`game_state.rs`](server_do/src/game_state.rs) (server logic)                                          |
 | **proto**        | [`proto/`](proto/)               | **The Glue.** Network messages and serialization.                                                                       | [`lib.rs`](proto/src/lib.rs) (structs)                                                                 |
 | **lobby_worker** | [`lobby_worker/`](lobby_worker/) | **The Lobby.** HTTP routing, match-code generation, and the static front-end (the JS FSM driver). Re-exports `MatchDO`. | [`src/lib.rs`](lobby_worker/src/lib.rs) (router)<br>[`script.js`](lobby_worker/script.js) (FSM driver) |
@@ -63,7 +63,7 @@ The simulation is deterministic and frame-independent. It uses a fixed timestep 
 
 - **Entry Point:** [`step`](game_core/src/lib.rs#L19)
 - **Physics:** [`systems/movement.rs`](game_core/src/systems/movement.rs) handles movement, [`systems/collision.rs`](game_core/src/systems/collision.rs) handles bounces.
-- **ECS:** We use [hecs](https://docs.rs/hecs) for entity management.
+- **Entities:** plain structs — one `Ball` and up to two `Paddle`s held as fields on `Simulation` (no ECS), advanced by the systems pipeline.
 
 ### 2. The Server (`server_do`)
 
@@ -77,11 +77,11 @@ Each game match runs in a Cloudflare **Durable Object** (DO). The DO maintains t
 
 ### 3. The Client (`client_wasm`)
 
-The client needs to be smooth (120Hz+) even though headers only arrive at 20Hz.
+The client needs to be smooth (120Hz+) even though server snapshots only arrive at 20Hz.
 
-- **Prediction:** The [`ClientPredictor`](client_wasm/src/prediction.rs) applies local inputs immediately so the player feels zero latency.
-- **Reconciliation:** When a server snapshot arrives, if it disagrees with the local prediction significantly, the client resets to the authoritative server state.
-- **Rendering:** [`Renderer`](client_wasm/src/renderer/mod.rs) uses WebGPU to draw the state. It interpolates remote entities (opponent paddle, ball) for smoothness.
+- **Own paddle:** the client integrates its own paddle locally from input, so the player feels zero latency without any prediction/reconciliation machinery.
+- **Interpolation:** the opponent paddle and ball are interpolated and exponentially smoothed from 20Hz server snapshots ([`state.rs`](client_wasm/src/state.rs)).
+- **Rendering:** a small Canvas2D renderer ([`canvas2d.rs`](client_wasm/src/canvas2d.rs)) draws the arena, paddles, and ball each frame.
 
 ### 4. Networking (`proto`)
 
@@ -99,7 +99,7 @@ The client flow — menus → matchmaking → gameplay, plus local pause and mul
 
 ## Key Data Flows
 
-![Netcode: prediction and reconciliation](docs/diagrams/netcode-loop.png)
+![Netcode: authoritative server](docs/diagrams/netcode-loop.png)
 
 _Source: [`docs/diagrams/netcode-loop.dot`](docs/diagrams/netcode-loop.dot)._
 
@@ -108,14 +108,14 @@ _Source: [`docs/diagrams/netcode-loop.dot`](docs/diagrams/netcode-loop.dot)._
 1. Browser captures key press in [`on_key_down`](client_wasm/src/lib.rs).
 2. Client updates local paddle immediately.
 3. Client sends `C2S::Input` to server.
-4. Server validates input (enforcing speed limits) and updates entity intent.
+4. Server validates input (enforcing speed limits) and updates the paddle's target.
 5. Server includes new paddle position in next broadcast.
 
 ### Rendering Frame
 
 1. `requestAnimationFrame` calls [`render`](client_wasm/src/lib.rs).
-2. Prediction system updates local game state.
-3. [`Renderer::draw`](client_wasm/src/renderer/mod.rs) submits draw commands to GPU.
+2. In a local game, the simulation steps; in a match, remote entities are interpolated toward the latest snapshot.
+3. [`Renderer::draw`](client_wasm/src/canvas2d.rs) paints the arena, paddles, and ball onto the canvas.
 
 ---
 
@@ -143,9 +143,9 @@ The authoritative definitions live in [`proto/src/lib.rs`](proto/src/lib.rs); va
 
 **Server → Client (`S2C`):** `Welcome { player_id }` · `MatchFound` · `Countdown { seconds }` · `GameStart` · `GameState(GameStateSnapshot)` · `GameOver { winner }` · `OpponentDisconnected` · `Pong { t_ms }` · `OpponentReconnecting` · `OpponentReconnected`
 
-### ECS Components & Systems
+### Entities & Systems
 
-**Components:** `Paddle { player_id, y }` · `Ball { pos, vel }` · `PaddleIntent { target_y, velocity_y }`
+**Entities:** `Paddle { player_id, y, target_y, velocity_y }` · `Ball { pos, vel }`
 
 **Resources:** `Time` · `Score` · `Events` · `NetQueue` · `GameRng` · `RespawnState`
 

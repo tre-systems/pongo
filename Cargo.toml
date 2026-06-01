@@ -13,6 +13,6 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Rob Gilks"]
 license = "MIT"
-description = "A Pong game with Rust, WebGPU, and Cloudflare Durable Objects."
-repository = "https://github.com/rgilks/pongo"
+description = "A Pong game with Rust, WebAssembly, and Cloudflare Durable Objects."
+repository = "https://github.com/tre-systems/pongo"
 

@@ -1,7 +1,7 @@
 {
   "name": "pongo",
   "version": "0.1.0",
-  "description": "Pong game with Rust + WebGPU + Cloudflare Durable Objects",
+  "description": "Pong game with Rust + WebAssembly + Cloudflare Durable Objects",
   "scripts": {
     "fmt": "cargo fmt",
     "clippy": "cargo clippy --workspace -- -D warnings",

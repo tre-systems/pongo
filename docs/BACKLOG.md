@@ -5,7 +5,6 @@ Forward-looking work and known limitations. Items here are intentional gaps, not
 ## Known limitations
 
 - **Reconnect slot is claimed by code, not identity.** While a match is paused for a reconnect (`server_do`), the next `Join` for that match re-attaches to the held-open slot. In a private two-player room that's the dropped player returning; in principle a third party who has the link could take the slot during the grace window. Acceptable for casual play — tighten with a per-player reconnect token if it ever matters.
-- **Gameplay e2e skips without WebGPU.** The Playwright gameplay specs (start-game, matchmaking) need WebGPU and `test.skip()` where it's unavailable, which includes some headless CI runners. The menu/WASM/match-code specs always run. Revisit with a WebGPU-capable runner or a reliable software-WebGPU setup to exercise gameplay in CI too.
 - **Match codes are guessable in principle.** Codes are 5 chars over a 36-char alphabet (~60M combinations) generated with `thread_rng`. Fine for short-lived two-capacity rooms; add rate limiting or longer codes if room-crashing is ever observed.
 
 ## Nice to have

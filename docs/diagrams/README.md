@@ -4,17 +4,17 @@ Graphviz / DOT sources plus rendered PNGs. The `.dot` files are the source of tr
 
 ## Files
 
-| Diagram                              | Source                | Rendered              |
-| ------------------------------------ | --------------------- | --------------------- |
-| System overview (shared core)        | `system-overview.dot` | `system-overview.png` |
-| Client state machine                 | `client-fsm.dot`      | `client-fsm.png`      |
-| Netcode: prediction & reconciliation | `netcode-loop.dot`    | `netcode-loop.png`    |
+| Diagram                       | Source                | Rendered              |
+| ----------------------------- | --------------------- | --------------------- |
+| System overview (shared core) | `system-overview.dot` | `system-overview.png` |
+| Client state machine          | `client-fsm.dot`      | `client-fsm.png`      |
+| Netcode: authoritative server | `netcode-loop.dot`    | `netcode-loop.png`    |
 
 ## Conventions
 
 Color coding by domain:
 
-- **Blue** — client / browser code (input, prediction, render).
+- **Blue** — client / browser code (input, interpolation, render).
 - **Green** — server code (Cloudflare Worker, Durable Object); a bold-green node is an active "playing" state.
 - **Purple** — shared, pure Rust crates (`game_core`, `proto`), no I/O.
 - **Yellow / orange** — time-driven (the 60Hz loop) or recovering (paused, reconnecting).

@@ -36,7 +36,7 @@ The `isTransitioning` lock serialises transitions so that rapid events — for e
 
 ## Design notes
 
-- The FSM is exported from `client_wasm`, but the Rust `Client` simulation does not read it: the render/sim loop keys off presence checks (`local_game.is_some()`, `predictor.is_active()`) rather than the FSM state. The FSM governs UI and flow in JS, not the Rust simulation.
+- The FSM is exported from `client_wasm`, but the Rust `Client` simulation does not read it: the render/sim loop keys off a presence check (`local_game.is_some()` for offline vs. multiplayer) rather than the FSM state. The FSM governs UI and flow in JS, not the Rust simulation.
 - A `GameState` object in `script.js` mirrors `FsmState` for DOM/CSS use.
 
 ## Pause (local games)

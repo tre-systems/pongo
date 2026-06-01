@@ -1,6 +1,6 @@
 # Pongo
 
-A multiplayer Pong game built with **Rust + WebGPU** (client) and **Cloudflare Durable Objects** (server).
+A multiplayer Pong game built with **Rust + WebAssembly** (client) and **Cloudflare Durable Objects** (server).
 
 **[Play now →](https://pongo.tre.systems)**
 
@@ -34,7 +34,7 @@ See **[ARCHITECTURE.md](ARCHITECTURE.md)** for the system diagram and component 
 
 **Key design decisions:**
 
-- **Shared `game_core`** — Same ECS physics on client and server for prediction
+- **Shared `game_core`** — The same deterministic physics runs the offline game and the authoritative server
 - **Binary protocol** — Minimal `postcard` serialization over WebSocket
 - **Durable Objects** — Each match is a stateful instance with 60Hz game loop
 
@@ -42,9 +42,9 @@ See **[ARCHITECTURE.md](ARCHITECTURE.md)** for the system diagram and component 
 
 ```
 pongo/
-├── game_core/       # ECS game logic (hecs) — shared by client/server
+├── game_core/       # Game logic (plain structs) — shared by client/server
 ├── proto/           # Network protocol (postcard)
-├── client_wasm/     # WebGPU renderer (wgpu)
+├── client_wasm/     # Canvas2D renderer + client
 ├── server_do/       # Durable Object server
 ├── lobby_worker/    # HTTP endpoints + routing
 └── worker/          # Built WASM + assets

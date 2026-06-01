@@ -2,7 +2,7 @@
 
 > _Real-time multiplayer games are mostly about trade-offs: latency vs authority, simplicity vs correctness, and cost vs control. This article walks through an approach that worked well for me — using Rust compiled to WebAssembly to share deterministic game logic between the browser and Cloudflare’s edge._
 
-**[Play the live demo →](https://pongo.tre.systems/)** | **[View source on GitHub →](https://github.com/rgilks/pongo)**
+**[Play the live demo →](https://pongo.tre.systems/)** | **[View source on GitHub →](https://github.com/tre-systems/pongo)**
 
 ---
 
@@ -32,13 +32,13 @@ The solution I landed on was a kind of “universal app” architecture, built w
 
 Most multiplayer games try to share logic between client and server, but language boundaries usually get in the way. By writing the core game logic in Rust, I can compile it to WebAssembly and run the _same code_ in two very different environments:
 
-1. **The Browser** — rendering at 120Hz+ with WebGPU.
+1. **The Browser** — rendering at 120Hz+ with Canvas2D.
 2. **The Edge** — running inside a Cloudflare Durable Object at a fixed 60Hz.
 
 ```mermaid
 graph TD
     subgraph "Shared Crate (game_core)"
-        Logic["Game Logic (ECS)"]
+        Logic["Game Logic (plain structs)"]
         Physics["Deterministic Physics"]
     end
 
@@ -50,55 +50,47 @@ graph TD
 
     subgraph "The Browser (Client)"
         Input["Player Input"]
-        Predict["Client Predictor\n(Prediction)"]
-        Render["WebGPU Renderer"]
+        Own["Move Own Paddle\n(Local, Instant)"]
+        Render["Canvas2D Renderer\n(Interpolates Snapshots)"]
 
-        Input --> Predict
-        Predict -->|"Step (Frame Rate)"| Logic
-        Predict --> Render
+        Input --> Own
+        Own --> Render
     end
 
-    Network <-->|WebSockets| Predict
+    Network <-->|"Input / WebSockets"| Own
+    Network -.->|"Snapshot (20Hz)"| Render
 ```
 
 ---
 
 ## 1. The Shared Core (`game_core`)
 
-At the heart of the project is the `game_core` crate. It uses [`hecs`](https://docs.rs/hecs), a lightweight Entity Component System (ECS), to manage entities like paddles and the ball.
+At the heart of the project is the `game_core` crate. The entity set is tiny and fixed — one ball and up to two paddles — so it models them as plain Rust structs rather than reaching for an ECS.
 
 The physics simulation lives in a deterministic `step` function. It uses fixed timesteps and predictable math (via [`glam`](https://docs.rs/glam)) so that, given the same inputs, it produces the same results on both the client (WASM) and the server.
 
 Here’s the actual `step` function that runs in both environments:
 
 ```rust
-// game_core/src/lib.rs
+// game_core/src/simulation.rs
 
-pub fn step(
-    world: &mut World,
-    time: &mut Time,
-    map: &GameMap,
-    config: &Config,
-    /* ... */
-) {
-    // Fixed timestep loop for determinism
-    let mut remaining_dt = time.dt.min(Params::MAX_DT);
-    while remaining_dt > 0.0 {
-        let step_dt = remaining_dt.min(Params::FIXED_DT); // 1/60 sec
-        remaining_dt -= step_dt;
-
-        // 1. Move paddles based on accumulated inputs
-        systems::movement::move_paddles(world, map, config, step_dt);
-
-        // 2. Physics & Collisions
-        move_ball(world, step_dt);
-        check_collisions(world, map, config, events);
+impl Simulation {
+    // Advances exactly ONE fixed 1/60s tick. The host — the server's 60Hz
+    // alarm, or the browser's offline-game loop — owns the accumulator and
+    // calls this the right number of times, so physics stays frame-rate
+    // independent and reproducible.
+    pub fn step(&mut self) {
+        ingest_inputs(&mut self.paddles, &mut self.net_queue);
+        move_ball(&mut self.ball, Params::FIXED_DT);
+        move_paddles(&mut self.paddles, &self.config, Params::FIXED_DT);
+        check_collisions(&mut self.ball, &self.paddles, &self.map, &self.config, &mut self.events);
+        check_scoring(&mut self.ball, &self.map, &mut self.score, &mut self.events, &mut self.respawn_state);
     }
 }
 ```
 
 This is deliberately boring code.  
-Input state + world state goes in, a new world state comes out.
+Simulation state goes in, the next tick's state comes out.
 
 ---
 
@@ -125,46 +117,34 @@ For paddles, the server uses **Target-Based Validation**. It accepts the client'
 
 ---
 
-## 3. Client: Prediction and Reconciliation
+## 3. Client: Instant Local Feedback
 
-To hide round-trip latency, the client uses **client-side prediction**.
+Pong is unforgiving about input latency, so the client moves _its own_ paddle locally the instant you press a key — it never waits for the server to confirm. Everything else (the opponent's paddle and the ball) is interpolated and smoothed from the authoritative snapshots as they arrive.
 
-When you press “UP”, the client applies that input immediately and renders the next frame. It doesn’t wait for confirmation from the server. This is what makes the game feel responsive.
-
-### The Reconciliation Loop
-
-The client is still guessing, though. When an authoritative snapshot arrives from the server (usually ~50ms old), the client checks whether its prediction was correct.
+The trick is what the client is allowed to be authoritative over: **nothing** that affects the other player. Its paddle target is still sent to the server, validated, and echoed back in the next snapshot. Because the client never simulates the opponent or the ball, there is no divergence to detect — so Pongo needs no client-side prediction or reconciliation layer at all. The local paddle move is just instant feedback; the server's snapshot is always the truth.
 
 ```mermaid
 sequenceDiagram
     participant Client
     participant Server
 
-    Note over Client: Frame 100: User presses UP
-    Client->>Client: Apply Input (Predict)
-    Client->>Server: Send Input
+    Note over Client: User presses UP
+    Client->>Client: Move own paddle locally (instant)
+    Client->>Server: Send target Y
 
-    Note over Server: ...Network Delay...
+    Note over Server: Validate (clamp + speed cap)
+    Server->>Server: Step simulation (60Hz)
+    Server->>Client: Snapshot (20Hz)
 
-    Server->>Server: Process Input
-    Server->>Client: Send Snapshot (Tick 100)
-
-    Note over Client: ...Network Delay...
-
-    Note over Client: Client receives snapshot
-    Client->>Client: Compare prediction vs server
-    alt Prediction matches
-        Client->>Client: Continue smoothly
-    else Divergence detected
-        Client->>Client: Reset to server state
-    end
+    Note over Client: Interpolate opponent + ball
+    Client->>Client: Render at display rate
 ```
 
 ---
 
-## 4. Rendering with WebGPU
+## 4. Rendering with Canvas2D
 
-Rendering is handled with [`wgpu`](https://wgpu.rs/), Rust’s implementation of the WebGPU standard. The simulation runs at 60Hz, but displays often refresh at 120Hz or higher, so the renderer interpolates entity positions between physics ticks to keep visuals smooth.
+Rendering is deliberately simple: a small [Canvas2D](https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D) renderer draws the arena, paddles, and ball. The simulation runs at 60Hz and the server only broadcasts snapshots at 20Hz, but displays often refresh at 120Hz or higher, so the client interpolates entity positions between snapshots to keep visuals smooth. There is no GPU pipeline to set up — it works everywhere a `<canvas>` does.
 
 ---
 
@@ -191,7 +171,7 @@ Durable Objects are also single-region, which means global latency must be handl
 
 By leaning on Rust’s ability to target WebAssembly, Pongo ends up with a clean and pragmatic architecture:
 
-1. **Low latency** through client-side prediction.
+1. **Low latency** through local own-paddle movement and snapshot interpolation.
 2. **Strong authority** via deterministic server simulation.
 3. **Low operational overhead** by running game loops at the edge.
 

@@ -13,8 +13,8 @@ digraph NetcodeLoop {
     fontname="Avenir",
     label=<
       <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">
-        <TR><TD><FONT POINT-SIZE="34"><B>Netcode: Prediction &amp; Reconciliation</B></FONT></TD></TR>
-        <TR><TD><FONT POINT-SIZE="14" COLOR="#5b6b80">Authoritative 60Hz server · 20Hz snapshots · client predicts locally</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="34"><B>Netcode: Authoritative Server</B></FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="14" COLOR="#5b6b80">Server owns the truth at 60Hz; the client moves its own paddle locally and interpolates the rest</FONT></TD></TR>
       </TABLE>
     >,
     labelloc=t,
@@ -53,13 +53,11 @@ digraph NetcodeLoop {
       color="#b9d8ff", fillcolor="#f7fbff", style="rounded,filled", penwidth=1.8, margin=20
     ];
     INPUT [label=<<B>Capture input</B><BR/><FONT POINT-SIZE="14">keyboard / touch → paddle Y</FONT>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
-    PREDICT [label=<<B>Predict locally</B><BR/><FONT POINT-SIZE="14">apply own input immediately (game_core)</FONT>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
-    RECONCILE [label=<<B>Reconcile</B><BR/><FONT POINT-SIZE="14">snap to server snapshot on drift</FONT>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
-    RENDER [label=<<B>WebGPU render</B><BR/><FONT POINT-SIZE="14">interpolate opponent + ball</FONT>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
+    OWN [label=<<B>Move own paddle locally</B><BR/><FONT POINT-SIZE="14">immediate, zero-latency feel</FONT>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
+    RENDER [label=<<B>Canvas2D render</B><BR/><FONT POINT-SIZE="14">interpolate opponent + ball from snapshots</FONT>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
 
-    INPUT -> PREDICT [label="zero-latency feel"];
-    PREDICT -> RENDER;
-    RECONCILE -> RENDER [label="corrected state"];
+    INPUT -> OWN [label="apply immediately"];
+    OWN -> RENDER;
   }
 
   // ---- Server ----
@@ -80,5 +78,5 @@ digraph NetcodeLoop {
 
   // ---- Over the wire (postcard binary over WebSocket) ----
   INPUT -> INGEST [label="C2S::Input  (~30Hz)", color="#2f80ed", fontcolor="#2f80ed"];
-  BROADCAST -> RECONCILE [label="S2C::GameState  (20Hz)", color="#22865a", fontcolor="#22865a"];
+  BROADCAST -> RENDER [label="S2C::GameState  (20Hz)", color="#22865a", fontcolor="#22865a"];
 }

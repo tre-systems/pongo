@@ -14,7 +14,7 @@ digraph SystemOverview {
     label=<
       <TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0">
         <TR><TD><FONT POINT-SIZE="34"><B>System Overview</B></FONT></TD></TR>
-        <TR><TD><FONT POINT-SIZE="14" COLOR="#5b6b80">One deterministic Rust core runs on both client and server</FONT></TD></TR>
+        <TR><TD><FONT POINT-SIZE="14" COLOR="#5b6b80">The same deterministic Rust core runs the offline game and the authoritative server</FONT></TD></TR>
       </TABLE>
     >,
     labelloc=t,
@@ -64,8 +64,8 @@ digraph SystemOverview {
       margin=22
     ];
 
-    C_RENDER [label=<<B>Input + WebGPU renderer</B><BR/><FONT POINT-SIZE="15">wgpu; interpolates remote entities</FONT>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
-    C_PRED [label=<<B>Client predictor</B><BR/><FONT POINT-SIZE="15">applies local input immediately, reconciles</FONT>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
+    C_RENDER [label=<<B>Input + Canvas2D renderer</B><BR/><FONT POINT-SIZE="15">draws ball + paddles</FONT>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
+    C_PRED [label=<<B>Own-paddle integration</B><BR/><FONT POINT-SIZE="15">immediate local move; interpolates opponent + ball</FONT>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
     C_LOCAL [label=<<B>Local VS-AI game</B><BR/><FONT POINT-SIZE="15">offline, client-only</FONT>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
 
     C_RENDER -> C_PRED [style=invis];
@@ -90,7 +90,7 @@ digraph SystemOverview {
       margin=22
     ];
 
-    CORE [label=<<B>game_core</B><BR/><FONT POINT-SIZE="15">Simulation::step — ECS physics (hecs)</FONT>>, fillcolor="#f3ecff:#ffffff", color="#7c3aed", width=3.6];
+    CORE [label=<<B>game_core</B><BR/><FONT POINT-SIZE="15">Simulation::step — struct-based physics</FONT>>, fillcolor="#f3ecff:#ffffff", color="#7c3aed", width=3.6];
     PROTO [label=<<B>proto</B><BR/><FONT POINT-SIZE="15">postcard binary C2S / S2C</FONT>>, fillcolor="#f3ecff:#ffffff", color="#7c3aed"];
 
     CORE -> PROTO [style=invis];
@@ -122,8 +122,7 @@ digraph SystemOverview {
     DO -> LOOP [style=invis];
   }
 
-  // ---- Shared-core usage (same code, three hosts) ----
-  C_PRED -> CORE [label="runs", style=dashed, color="#7c3aed", fontcolor="#7c3aed"];
+  // ---- Shared-core usage (same code on server + offline game) ----
   C_LOCAL -> CORE [label="runs", style=dashed, color="#7c3aed", fontcolor="#7c3aed"];
   LOOP -> CORE [label="runs (authoritative)", style=dashed, color="#7c3aed", fontcolor="#7c3aed", constraint=false];
 
