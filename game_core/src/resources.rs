@@ -1,3 +1,5 @@
+use crate::PlayerId;
+
 /// Time resource for tracking simulation time
 #[derive(Debug, Clone, Copy)]
 pub struct Time {
@@ -14,7 +16,7 @@ impl Time {
 impl Default for Time {
     fn default() -> Self {
         Self {
-            dt: 0.016,
+            dt: crate::Params::FIXED_DT,
             now: 0.0,
         }
     }
@@ -40,11 +42,11 @@ impl Score {
         self.right += 1;
     }
 
-    pub fn has_winner(&self, win_score: u8) -> Option<u8> {
+    pub fn has_winner(&self, win_score: u8) -> Option<PlayerId> {
         if self.left >= win_score {
-            Some(0) // Left player wins
+            Some(PlayerId::LEFT)
         } else if self.right >= win_score {
-            Some(1) // Right player wins
+            Some(PlayerId::RIGHT)
         } else {
             None
         }
@@ -118,7 +120,7 @@ impl Events {
 /// Network input queue (placeholder for network inputs)
 #[derive(Debug, Clone, Default)]
 pub struct NetQueue {
-    pub inputs: Vec<(u8, f32)>, // (player_id, y_absolute)
+    pub inputs: Vec<(PlayerId, f32)>, // (player_id, y_absolute)
 }
 
 impl NetQueue {
@@ -130,11 +132,11 @@ impl NetQueue {
         self.inputs.clear();
     }
 
-    pub fn push_input(&mut self, player_id: u8, y: f32) {
+    pub fn push_input(&mut self, player_id: PlayerId, y: f32) {
         self.inputs.push((player_id, y));
     }
 
-    pub fn pop_inputs(&mut self) -> Vec<(u8, f32)> {
+    pub fn pop_inputs(&mut self) -> Vec<(PlayerId, f32)> {
         let inputs = self.inputs.clone();
         self.inputs.clear();
         inputs
@@ -173,7 +175,7 @@ mod tests {
         }
         assert_eq!(
             score.has_winner(11),
-            Some(0),
+            Some(PlayerId(0)),
             "Left player should win at 11"
         );
     }
@@ -186,7 +188,7 @@ mod tests {
         }
         assert_eq!(
             score.has_winner(11),
-            Some(1),
+            Some(PlayerId(1)),
             "Right player should win at 11"
         );
     }
@@ -219,19 +221,19 @@ mod tests {
     #[test]
     fn test_net_queue_push_input() {
         let mut queue = NetQueue::new();
-        queue.push_input(0, 10.0);
-        queue.push_input(1, 14.0);
+        queue.push_input(PlayerId(0), 10.0);
+        queue.push_input(PlayerId(1), 14.0);
 
         assert_eq!(queue.inputs.len(), 2);
-        assert_eq!(queue.inputs[0], (0, 10.0));
-        assert_eq!(queue.inputs[1], (1, 14.0));
+        assert_eq!(queue.inputs[0], (PlayerId(0), 10.0));
+        assert_eq!(queue.inputs[1], (PlayerId(1), 14.0));
     }
 
     #[test]
     fn test_net_queue_clear() {
         let mut queue = NetQueue::new();
-        queue.push_input(0, 10.0);
-        queue.push_input(1, 14.0);
+        queue.push_input(PlayerId(0), 10.0);
+        queue.push_input(PlayerId(1), 14.0);
 
         queue.clear();
         assert_eq!(queue.inputs.len(), 0);

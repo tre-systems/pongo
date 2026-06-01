@@ -1,14 +1,30 @@
 use glam::Vec2;
 
+/// Identifies a player / side of the arena.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct PlayerId(pub u8);
+
+impl PlayerId {
+    /// The left player.
+    pub const LEFT: PlayerId = PlayerId(0);
+    /// The right player.
+    pub const RIGHT: PlayerId = PlayerId(1);
+
+    /// 0-based index (0 = left, 1 = right), for arrays and side-keyed lookups.
+    pub fn index(self) -> usize {
+        self.0 as usize
+    }
+}
+
 /// Paddle component - represents a player's paddle
 #[derive(Debug, Clone, Copy)]
 pub struct Paddle {
-    pub player_id: u8, // 0 = left, 1 = right
-    pub y: f32,        // Y position (clamped to arena)
+    pub player_id: PlayerId, // LEFT or RIGHT
+    pub y: f32,              // Y position (clamped to arena)
 }
 
 impl Paddle {
-    pub fn new(player_id: u8, y: f32) -> Self {
+    pub fn new(player_id: PlayerId, y: f32) -> Self {
         Self { player_id, y }
     }
 }
@@ -77,8 +93,8 @@ mod tests {
 
     #[test]
     fn test_paddle_new() {
-        let paddle = Paddle::new(0, 12.0);
-        assert_eq!(paddle.player_id, 0);
+        let paddle = Paddle::new(PlayerId(0), 12.0);
+        assert_eq!(paddle.player_id, PlayerId(0));
         assert_eq!(paddle.y, 12.0);
     }
 

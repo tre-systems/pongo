@@ -35,9 +35,10 @@ Pongo is small, but it leans on a consistent set of patterns. Knowing these expl
 
 - **One deterministic core, three hosts.** All gameplay lives in [`game_core::step`](game_core/src/lib.rs) — a pure, deterministic function (seeded RNG, fixed timestep, no I/O). It is run by everything that advances the game: the authoritative server ([`GameState::step`](server_do/src/game_state.rs)), the offline VS-AI game ([`LocalGame::step`](client_wasm/src/simulation.rs)), and the client-side predictor ([`ClientPredictor`](client_wasm/src/prediction.rs)). Determinism is the enabling property — it is what lets the client predict and reconcile against the server. **Never fork gameplay into a host; add it to `game_core` so all three stay identical.**
 - **ECS (hecs).** Entities hold components — `Paddle`, `Ball`, `PaddleIntent` ([`components.rs`](game_core/src/components.rs)); behaviour lives in ordered systems ([`systems/`](game_core/src/systems)). The pipeline order (ingest inputs → move ball → move paddles → collisions → scoring) is defined once, in `step`. Add behaviour as a system; add entity state as a component.
-- **Resources alongside the World.** State that is not per-entity — `Time, Score, Events, NetQueue, GameRng, RespawnState` ([`resources.rs`](game_core/src/resources.rs)) — is the ECS "resource" concept, passed explicitly to systems. (These nine values travel together everywhere — see [Patterns to adopt](#patterns-to-adopt).)
-- **Fixed timestep + accumulator.** `step` integrates in fixed `Params::FIXED_DT` micro-steps regardless of frame time, so physics is frame-rate independent and reproducible. Hosts feed real elapsed time into an accumulator (the server alarm; the client `step_simulation`).
+- **The `Simulation` aggregate (parameter object).** The `World` plus its resources (`Time, Score, Events, NetQueue, GameRng, RespawnState`) are bundled into one [`Simulation`](game_core/src/simulation.rs) with `new(seed)` and `step(&mut self)`. Each host embeds one `Simulation` rather than threading the pieces individually. Resources are the ECS "resource" concept (state that isn't per-entity).
+- **Fixed timestep, host-owned accumulator.** `Simulation::step` advances exactly one `Params::FIXED_DT` tick — the single source for the timestep. Hosts feed real elapsed time into their own accumulator and call `step` the right number of times (the server alarm; the client `step_simulation` and predictor), so physics is frame-rate independent and reproducible.
 - **Command queue for input.** Every input source — keyboard, touch, the AI, the network — funnels through `NetQueue::push_input(player_id, y)` as an absolute target Y, and `ingest_inputs` drains it into `PaddleIntent`. The simulation never knows where input came from.
+- **Strongly-typed ids.** `PlayerId(u8)` ([`components.rs`](game_core/src/components.rs)) names a side (`PlayerId::LEFT` / `RIGHT`) so it can't be confused with a score or tick. The domain (game_core and the server's match logic) uses `PlayerId`; the wire protocol stays `u8`, converting at the boundary.
 - **Config over a constants layer.** `Params` holds the `const` tuning values; `Config` ([`config.rs`](game_core/src/config.rs)) is the cloneable runtime struct seeded from them and threaded through systems. Tune gameplay in one place.
 
 ### Networking & client
@@ -54,15 +55,6 @@ Pongo is small, but it leans on a consistent set of patterns. Knowing these expl
 - **Interior mutability, borrow dropped before await.** The DO holds `RefCell<GameState>`; handlers must `drop` the borrow before any `.await` (see the alarm loop in [`lib.rs`](server_do/src/lib.rs)).
 - **Identify sockets by attachment.** Each socket is tagged with its player id via `serialize_attachment`; the close/ping handlers recover it with `deserialize_attachment`. Never guess the player from map order.
 - **Fire-and-forget broadcast.** Sends to clients ignore per-socket errors (`let _ = …send`); a dead socket is reaped by the close handler, not by send failures.
-
-## Patterns to adopt
-
-Patterns the code already implies but does not yet use. Tracked in [docs/BACKLOG.md](docs/BACKLOG.md).
-
-- **A `Simulation` aggregate (parameter object).** `game_core::step` takes nine arguments (hence its `#[allow(clippy::too_many_arguments)]`), and the _same_ nine fields — `world, time, map, config, score, events, net_queue, rng, respawn_state` — are re-declared by `GameState`, `LocalGame`, and `ClientPredictor`. Bundle them into one `Simulation` in `game_core` with `Simulation::new(seed)` and `step(&mut self)`; the three hosts then embed one `Simulation` instead of nine fields. Removes the duplication, deletes the nine-arg signature, and gives the simulation a single named type.
-- **Make illegal states unrepresentable.** `ClientPredictor` carries the bundle as nine separate `Option<T>` fields that are always all-`Some` or all-`None`. With the aggregate above it collapses to one `Option<Simulation>` — a single source of truth for "is the predictor running".
-- **Single source for the timestep.** The fixed step is spelled three slightly different ways (`Params::FIXED_DT` = 0.0166, `Time::default` `dt` = 0.016, `1.0 / 60.0` in the hosts). Route them all through `Params::FIXED_DT`. (There are also two paddle-Y clamp helpers, `GameMap::clamp_y` and `Config::clamp_paddle_y`, worth consolidating.)
-- **Newtype `PlayerId`.** `player_id: u8` is threaded widely; a `PlayerId(u8)` newtype would stop it being mixed up with scores or ticks. Low priority.
 
 ## Codebase Map
 

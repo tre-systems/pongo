@@ -44,7 +44,7 @@ pub fn move_ball(world: &mut World, dt: f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{create_paddle, Config, GameMap, Paddle, PaddleIntent, Time};
+    use crate::{create_paddle, Config, GameMap, Paddle, PaddleIntent, PlayerId, Time};
 
     fn setup_world() -> (World, Config, GameMap, Time) {
         let world = World::new();
@@ -58,7 +58,7 @@ mod tests {
     fn test_paddle_moves_towards_target_up() {
         let (mut world, config, map, time) = setup_world();
         let paddle_y = 12.0;
-        create_paddle(&mut world, 0, paddle_y);
+        create_paddle(&mut world, PlayerId(0), paddle_y);
 
         // Set target UP (smaller Y)
         let target = 5.0;
@@ -81,7 +81,7 @@ mod tests {
     fn test_paddle_moves_towards_target_down() {
         let (mut world, config, map, time) = setup_world();
         let paddle_y = 12.0;
-        create_paddle(&mut world, 0, paddle_y);
+        create_paddle(&mut world, PlayerId(0), paddle_y);
 
         // Set target DOWN (larger Y)
         let target = 18.0;
@@ -104,7 +104,7 @@ mod tests {
     fn test_paddle_teleport_attempt_throttled() {
         let (mut world, config, map, time) = setup_world();
         let paddle_y = 12.0;
-        create_paddle(&mut world, 0, paddle_y);
+        create_paddle(&mut world, PlayerId(0), paddle_y);
 
         // Set target HUGE jump
         let target = 20.0; // 8 units away
@@ -132,7 +132,7 @@ mod tests {
     fn test_paddle_reaches_target_if_close() {
         let (mut world, config, map, time) = setup_world();
         let paddle_y = 12.0;
-        create_paddle(&mut world, 0, paddle_y);
+        create_paddle(&mut world, PlayerId(0), paddle_y);
 
         // Set target very close (less than max move)
         let small_dist = 0.1;

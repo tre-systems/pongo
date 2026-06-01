@@ -1,4 +1,5 @@
 use crate::game_state::{Environment, GameClient, GameState, MatchState};
+use game_core::PlayerId;
 use proto::S2C;
 use std::cell::RefCell;
 use worker::*;
@@ -120,9 +121,9 @@ fn test_handle_input() {
     gs.handle_input(0, 1.0); // Move down
 
     // Check if input queue has it
-    let inputs = gs.net_queue.pop_inputs();
+    let inputs = gs.sim.net_queue.pop_inputs();
     assert!(!inputs.is_empty());
-    assert_eq!(inputs[0].0, 0);
+    assert_eq!(inputs[0].0, PlayerId(0));
     assert_eq!(inputs[0].1, 1.0);
 }
 

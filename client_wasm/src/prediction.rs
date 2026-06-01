@@ -1,23 +1,13 @@
 use crate::state::GameStateSnapshot;
-use game_core::{
-    create_ball, create_paddle, step, Config, Events, GameMap, GameRng, NetQueue, RespawnState,
-    Score, Time,
-};
-use hecs::World;
+use game_core::{create_ball, create_paddle, Params, PlayerId, Simulation};
 
 #[allow(dead_code)]
 pub struct ClientPredictor {
-    // Prediction state
     pub input_seq: u32,
-    pub world: Option<World>,
-    pub time: Option<Time>,
-    pub map: Option<GameMap>,
-    pub config: Option<Config>,
-    pub score: Option<Score>,
-    pub events: Option<Events>,
-    pub net_queue: Option<NetQueue>,
-    pub rng: Option<GameRng>,
-    pub respawn_state: Option<RespawnState>,
+
+    // The predicted simulation. `None` when prediction is inactive — a single
+    // source of truth, instead of nine parallel `Option` fields.
+    sim: Option<Simulation>,
 
     // Reconciliation state
     pub last_reconciled_tick: u32,
@@ -33,15 +23,7 @@ impl ClientPredictor {
     pub fn new() -> Self {
         Self {
             input_seq: 0,
-            world: None,
-            time: None,
-            map: None,
-            config: None,
-            score: None,
-            events: None,
-            net_queue: None,
-            rng: None,
-            respawn_state: None,
+            sim: None,
             last_reconciled_tick: 0,
             predicted_tick: 0,
             input_history: Vec::new(),
@@ -51,35 +33,22 @@ impl ClientPredictor {
     }
 
     pub fn is_active(&self) -> bool {
-        self.world.is_some()
+        self.sim.is_some()
     }
 
     pub fn initialize(&mut self, snapshot: &GameStateSnapshot, now_ms: f64) {
-        let map = GameMap::new();
-        let config = Config::new();
-        let mut world = World::new();
-        let rng = GameRng::new(now_ms as u64);
+        let mut sim = Simulation::new(now_ms as u64);
 
-        // Create paddles at server positions
-        create_paddle(&mut world, 0, snapshot.paddle_left_y);
-        create_paddle(&mut world, 1, snapshot.paddle_right_y);
-
-        // Create ball at server position with server velocity
+        // Create paddles and the ball at the server's positions.
+        create_paddle(&mut sim.world, PlayerId(0), snapshot.paddle_left_y);
+        create_paddle(&mut sim.world, PlayerId(1), snapshot.paddle_right_y);
         create_ball(
-            &mut world,
+            &mut sim.world,
             glam::f32::Vec2::new(snapshot.ball_x, snapshot.ball_y),
             glam::f32::Vec2::new(snapshot.ball_vx, snapshot.ball_vy),
         );
 
-        self.world = Some(world);
-        self.time = Some(Time::new(0.016, 0.0));
-        self.map = Some(map);
-        self.config = Some(config);
-        self.score = Some(Score::new());
-        self.events = Some(Events::new());
-        self.net_queue = Some(NetQueue::new());
-        self.rng = Some(rng);
-        self.respawn_state = Some(RespawnState::new());
+        self.sim = Some(sim);
         self.last_reconciled_tick = snapshot.tick;
         self.predicted_tick = snapshot.tick;
         self.accumulator = 0.0;
@@ -89,73 +58,19 @@ impl ClientPredictor {
     /// Process local input immediately (prediction step)
     #[allow(dead_code)]
     pub fn process_input(&mut self, player_id: u8, paddle_dir: i8) {
-        if self.world.is_none() {
-            return;
-        }
-
-        const SIM_FIXED_DT: f32 = 1.0 / 60.0;
-
-        if let (
-            Some(ref mut world),
-            Some(ref mut time),
-            Some(ref map),
-            Some(ref config),
-            Some(ref mut score),
-            Some(ref mut events),
-            Some(ref mut net_queue),
-            Some(ref mut rng),
-            Some(ref mut respawn_state),
-        ) = (
-            &mut self.world,
-            &mut self.time,
-            &self.map,
-            &self.config,
-            &mut self.score,
-            &mut self.events,
-            &mut self.net_queue,
-            &mut self.rng,
-            &mut self.respawn_state,
-        ) {
-            // Calculate new position
-            let mut current_y = 12.0;
-            for (_e, paddle) in world.query::<&game_core::Paddle>().iter() {
-                if paddle.player_id == player_id {
-                    current_y = paddle.y;
-                    break;
-                }
-            }
-            let mut new_y = current_y + (paddle_dir as f32) * config.paddle_speed * SIM_FIXED_DT;
-            let half_height = config.paddle_height / 2.0;
-            new_y = new_y.clamp(half_height, config.arena_height - half_height);
-
-            net_queue.push_input(player_id, new_y);
-
-            // Update time
-            *time = Time::new(SIM_FIXED_DT, time.now + SIM_FIXED_DT);
-
-            step(
-                world,
-                time,
-                map,
-                config,
-                score,
-                events,
-                net_queue,
-                rng,
-                respawn_state,
-            );
-
+        if let Some(sim) = &mut self.sim {
+            let new_y = predicted_paddle_y(sim, player_id, paddle_dir);
+            sim.net_queue.push_input(PlayerId(player_id), new_y);
+            sim.step();
             self.predicted_tick += 1;
         }
     }
 
     /// Step prediction loop based on time delta
     pub fn update(&mut self, now_ms: f64, player_id: u8, current_input: i8) {
-        if self.world.is_none() {
+        if self.sim.is_none() {
             return;
         }
-
-        const SIM_FIXED_DT: f32 = 1.0 / 60.0;
 
         // Init last time if needed
         if self.last_update_time == 0.0 {
@@ -166,62 +81,14 @@ impl ClientPredictor {
         self.accumulator += frame_time_ms as f32;
         self.last_update_time = now_ms;
 
-        while self.accumulator >= SIM_FIXED_DT {
-            self.accumulator -= SIM_FIXED_DT;
+        while self.accumulator >= Params::FIXED_DT {
+            self.accumulator -= Params::FIXED_DT;
 
-            if let (
-                Some(ref mut world),
-                Some(ref mut time),
-                Some(ref map),
-                Some(ref config),
-                Some(ref mut score),
-                Some(ref mut events),
-                Some(ref mut net_queue),
-                Some(ref mut rng),
-                Some(ref mut respawn_state),
-            ) = (
-                &mut self.world,
-                &mut self.time,
-                &self.map,
-                &self.config,
-                &mut self.score,
-                &mut self.events,
-                &mut self.net_queue,
-                &mut self.rng,
-                &mut self.respawn_state,
-            ) {
-                // Clear queue first
-                net_queue.clear();
-
-                // Calculate new position
-                let mut current_y = 12.0;
-                for (_e, paddle) in world.query::<&game_core::Paddle>().iter() {
-                    if paddle.player_id == player_id {
-                        current_y = paddle.y;
-                        break;
-                    }
-                }
-                let mut new_y =
-                    current_y + (current_input as f32) * config.paddle_speed * SIM_FIXED_DT;
-                let half_height = config.paddle_height / 2.0;
-                new_y = new_y.clamp(half_height, config.arena_height - half_height);
-
-                net_queue.push_input(player_id, new_y);
-
-                *time = Time::new(SIM_FIXED_DT, time.now + SIM_FIXED_DT);
-
-                step(
-                    world,
-                    time,
-                    map,
-                    config,
-                    score,
-                    events,
-                    net_queue,
-                    rng,
-                    respawn_state,
-                );
-
+            if let Some(sim) = &mut self.sim {
+                sim.net_queue.clear();
+                let new_y = predicted_paddle_y(sim, player_id, current_input);
+                sim.net_queue.push_input(PlayerId(player_id), new_y);
+                sim.step();
                 self.predicted_tick += 1;
             }
         }
@@ -249,28 +116,35 @@ impl ClientPredictor {
     }
 
     fn reset(&mut self) {
-        self.world = None;
-        self.time = None;
-        self.map = None;
-        self.config = None;
-        self.score = None;
-        self.events = None;
-        self.net_queue = None;
-        self.rng = None;
-        self.respawn_state = None;
+        self.sim = None;
     }
 
     #[allow(dead_code)]
     pub fn get_paddle_y(&self, player_id: u8) -> Option<f32> {
-        if let Some(ref world) = self.world {
-            for (_entity, paddle) in world.query::<&game_core::Paddle>().iter() {
-                if paddle.player_id == player_id {
+        if let Some(sim) = &self.sim {
+            for (_entity, paddle) in sim.world.query::<&game_core::Paddle>().iter() {
+                if paddle.player_id == PlayerId(player_id) {
                     return Some(paddle.y);
                 }
             }
         }
         None
     }
+}
+
+/// Integrate a paddle's target Y one fixed step from a local input direction.
+/// Shared by `process_input` and `update` so the prediction math lives in one place.
+fn predicted_paddle_y(sim: &Simulation, player_id: u8, dir: i8) -> f32 {
+    let mut current_y = 12.0;
+    for (_entity, paddle) in sim.world.query::<&game_core::Paddle>().iter() {
+        if paddle.player_id == PlayerId(player_id) {
+            current_y = paddle.y;
+            break;
+        }
+    }
+    let new_y = current_y + (dir as f32) * sim.config.paddle_speed * Params::FIXED_DT;
+    let half_height = sim.config.paddle_height / 2.0;
+    new_y.clamp(half_height, sim.config.arena_height - half_height)
 }
 
 #[cfg(test)]

@@ -121,7 +121,7 @@ impl WasmClient {
 
     fn step_simulation(client: &mut Client) {
         if let Some(local_game) = &mut client.local_game {
-            const SIM_FIXED_DT: f32 = 1.0 / 60.0;
+            const SIM_FIXED_DT: f32 = game_core::Params::FIXED_DT;
             let now_ms = Self::performance_now();
 
             if client.last_sim_time == 0.0 {
@@ -330,7 +330,7 @@ impl WasmClient {
     #[wasm_bindgen]
     pub fn get_score(&self) -> Vec<u8> {
         if let Some(local) = &self.0.local_game {
-            vec![local.score.left, local.score.right]
+            vec![local.sim.score.left, local.sim.score.right]
         } else {
             let (l, r) = self.0.game_state.get_scores();
             vec![l, r]

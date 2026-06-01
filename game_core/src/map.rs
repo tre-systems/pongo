@@ -1,3 +1,4 @@
+use crate::PlayerId;
 use glam::Vec2;
 
 /// Simple Pong arena - just the dimensions
@@ -17,8 +18,8 @@ impl GameMap {
     }
 
     /// Get spawn position for paddle based on player ID
-    pub fn paddle_spawn(&self, player_id: u8) -> Vec2 {
-        let x = if player_id == 0 {
+    pub fn paddle_spawn(&self, player_id: PlayerId) -> Vec2 {
+        let x = if player_id == PlayerId::LEFT {
             1.0 // Left paddle
         } else {
             self.width - 1.0 // Right paddle
@@ -63,7 +64,7 @@ mod tests {
     #[test]
     fn test_paddle_spawn_left() {
         let map = GameMap::new();
-        let pos = map.paddle_spawn(0);
+        let pos = map.paddle_spawn(PlayerId(0));
         assert_eq!(pos.x, 1.0, "Left paddle should spawn at x=1");
         assert_eq!(pos.y, 12.0, "Paddle should spawn at center Y");
     }
@@ -71,7 +72,7 @@ mod tests {
     #[test]
     fn test_paddle_spawn_right() {
         let map = GameMap::new();
-        let pos = map.paddle_spawn(1);
+        let pos = map.paddle_spawn(PlayerId(1));
         assert_eq!(pos.x, 31.0, "Right paddle should spawn at x=31");
         assert_eq!(pos.y, 12.0, "Paddle should spawn at center Y");
     }

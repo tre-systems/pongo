@@ -20,7 +20,7 @@ pub fn ingest_inputs(world: &mut World, net_queue: &mut NetQueue) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{create_paddle, NetQueue, Paddle};
+    use crate::{create_paddle, NetQueue, Paddle, PlayerId};
 
     fn setup_world() -> (hecs::World, NetQueue) {
         (hecs::World::new(), NetQueue::new())
@@ -29,12 +29,12 @@ mod tests {
     #[test]
     fn test_input_applied_to_correct_paddle() {
         let (mut world, mut net_queue) = setup_world();
-        create_paddle(&mut world, 0, 12.0);
-        create_paddle(&mut world, 1, 12.0);
+        create_paddle(&mut world, PlayerId(0), 12.0);
+        create_paddle(&mut world, PlayerId(1), 12.0);
 
         // Queue input for player 0
-        net_queue.push_input(0, 5.0);
-        net_queue.push_input(1, 18.0);
+        net_queue.push_input(PlayerId(0), 5.0);
+        net_queue.push_input(PlayerId(1), 18.0);
 
         ingest_inputs(&mut world, &mut net_queue);
 
@@ -46,16 +46,16 @@ mod tests {
         paddle_targets.sort_by_key(|(id, _)| *id);
 
         assert_eq!(paddle_targets.len(), 2);
-        assert_eq!(paddle_targets[0], (0, 5.0));
-        assert_eq!(paddle_targets[1], (1, 18.0));
+        assert_eq!(paddle_targets[0], (PlayerId(0), 5.0));
+        assert_eq!(paddle_targets[1], (PlayerId(1), 18.0));
     }
 
     #[test]
     fn test_input_queue_cleared_after_processing() {
         let (mut world, mut net_queue) = setup_world();
-        create_paddle(&mut world, 0, 12.0);
+        create_paddle(&mut world, PlayerId(0), 12.0);
 
-        net_queue.push_input(0, 10.0);
+        net_queue.push_input(PlayerId(0), 10.0);
         assert_eq!(net_queue.inputs.len(), 1);
 
         ingest_inputs(&mut world, &mut net_queue);
@@ -66,18 +66,18 @@ mod tests {
     #[test]
     fn test_multiple_inputs_for_same_player() {
         let (mut world, mut net_queue) = setup_world();
-        create_paddle(&mut world, 0, 12.0);
+        create_paddle(&mut world, PlayerId(0), 12.0);
 
         // Queue multiple inputs (last one should win)
-        net_queue.push_input(0, 5.0);
-        net_queue.push_input(0, 15.0);
-        net_queue.push_input(0, 8.0); // Last
+        net_queue.push_input(PlayerId(0), 5.0);
+        net_queue.push_input(PlayerId(0), 15.0);
+        net_queue.push_input(PlayerId(0), 8.0); // Last
 
         ingest_inputs(&mut world, &mut net_queue);
 
         // Last input target should be applied
         for (_entity, (paddle, intent)) in world.query::<(&Paddle, &PaddleIntent)>().iter() {
-            if paddle.player_id == 0 {
+            if paddle.player_id == PlayerId(0) {
                 assert_eq!(intent.target_y, 8.0, "Last input target should be applied");
             }
         }
@@ -86,20 +86,20 @@ mod tests {
     #[test]
     fn test_clamping() {
         let (mut world, mut net_queue) = setup_world();
-        create_paddle(&mut world, 0, 12.0);
+        create_paddle(&mut world, PlayerId(0), 12.0);
 
-        net_queue.push_input(0, -100.0); // Too low
+        net_queue.push_input(PlayerId(0), -100.0); // Too low
         ingest_inputs(&mut world, &mut net_queue);
         for (_entity, (paddle, intent)) in world.query::<(&Paddle, &PaddleIntent)>().iter() {
-            if paddle.player_id == 0 {
+            if paddle.player_id == PlayerId(0) {
                 assert_eq!(intent.target_y, 2.0, "Should clamp target to min");
             }
         }
 
-        net_queue.push_input(0, 100.0); // Too high
+        net_queue.push_input(PlayerId(0), 100.0); // Too high
         ingest_inputs(&mut world, &mut net_queue);
         for (_entity, (paddle, intent)) in world.query::<(&Paddle, &PaddleIntent)>().iter() {
-            if paddle.player_id == 0 {
+            if paddle.player_id == PlayerId(0) {
                 assert_eq!(intent.target_y, 22.0, "Should clamp target to max");
             }
         }
@@ -108,7 +108,7 @@ mod tests {
     #[test]
     fn test_no_panic_when_no_paddles() {
         let (mut world, mut net_queue) = setup_world();
-        net_queue.push_input(0, 10.0);
+        net_queue.push_input(PlayerId(0), 10.0);
 
         // Should not panic
         ingest_inputs(&mut world, &mut net_queue);
@@ -117,7 +117,7 @@ mod tests {
     #[test]
     fn test_no_panic_when_no_inputs() {
         let (mut world, mut net_queue) = setup_world();
-        create_paddle(&mut world, 0, 12.0);
+        create_paddle(&mut world, PlayerId(0), 12.0);
 
         // Should not panic
         ingest_inputs(&mut world, &mut net_queue);

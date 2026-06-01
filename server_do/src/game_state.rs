@@ -1,7 +1,6 @@
 #![allow(unknown_lints)]
 #![allow(clippy::manual_is_multiple_of)]
 use game_core::*;
-use hecs::World;
 use js_sys::Date;
 use proto::*;
 use std::collections::HashMap;
@@ -67,15 +66,7 @@ pub struct ClientInfo {
 // Game state wrapper for interior mutability
 pub struct GameState {
     pub env: Box<dyn Environment>,
-    pub world: World,
-    pub time: Time,
-    pub map: GameMap,
-    pub config: Config,
-    pub score: Score,
-    pub events: Events,
-    pub net_queue: NetQueue,
-    pub rng: GameRng,
-    pub respawn_state: RespawnState,
+    pub sim: Simulation,
     pub clients: HashMap<u8, ClientInfo>, // player_id (0=left, 1=right) -> ClientInfo
     pub next_player_id: u8,
     pub match_state: MatchState,
@@ -89,33 +80,19 @@ pub struct GameState {
 
 impl GameState {
     pub fn new(env: Box<dyn Environment>) -> Self {
-        let mut world = World::new();
-        let map = GameMap::new();
-        let config = Config::new();
-        let time = Time::default();
-        let score = Score::new();
-        let events = Events::new();
-        let net_queue = NetQueue::new();
-        let rng = GameRng::default();
+        // Server uses a fixed seed; matches stay deterministic per Durable Object.
+        let mut sim = Simulation::new(12345);
 
         // Create ball at center
-        let ball_pos = map.ball_spawn();
-        let ball_vel = glam::Vec2::new(config.ball_speed_initial, 0.0);
-        create_ball(&mut world, ball_pos, ball_vel);
+        let ball_pos = sim.map.ball_spawn();
+        let ball_vel = glam::Vec2::new(sim.config.ball_speed_initial, 0.0);
+        create_ball(&mut sim.world, ball_pos, ball_vel);
 
         let now = env.now();
 
         Self {
             env,
-            world,
-            time,
-            map,
-            config,
-            score,
-            events,
-            net_queue,
-            rng,
-            respawn_state: RespawnState::new(),
+            sim,
             clients: HashMap::new(),
             next_player_id: 0,
             match_state: MatchState::Waiting,
@@ -150,8 +127,8 @@ impl GameState {
         );
 
         // Spawn paddle
-        let paddle_y = self.map.paddle_spawn(player_id).y;
-        create_paddle(&mut self.world, player_id, paddle_y);
+        let paddle_y = self.sim.map.paddle_spawn(PlayerId(player_id)).y;
+        create_paddle(&mut self.sim.world, PlayerId(player_id), paddle_y);
 
         // Check if match can start
         if self.clients.len() == 2 && self.match_state == MatchState::Waiting {
@@ -224,11 +201,12 @@ impl GameState {
 
         // Despawn paddle
         let entity_to_despawn =
-            self.world
+            self.sim
+                .world
                 .query::<(&Paddle,)>()
                 .iter()
                 .find_map(|(entity, (paddle,))| {
-                    if paddle.player_id == player_id {
+                    if paddle.player_id == PlayerId(player_id) {
                         Some(entity)
                     } else {
                         None
@@ -236,7 +214,7 @@ impl GameState {
                 });
 
         if let Some(entity) = entity_to_despawn {
-            let _ = self.world.despawn(entity);
+            let _ = self.sim.world.despawn(entity);
         }
 
         // Handle disconnection based on match state
@@ -283,7 +261,7 @@ impl GameState {
         if let Some(client_info) = self.clients.get_mut(&player_id) {
             let now = self.env.now() / 1000;
             client_info.last_activity = now;
-            self.net_queue.push_input(player_id, y);
+            self.sim.net_queue.push_input(PlayerId(player_id), y);
         }
     }
 
@@ -296,27 +274,27 @@ impl GameState {
         self.env.log("DO: Restarting match".to_string());
 
         // Reset game data
-        self.score = Score::new();
-        self.events = Events::new();
+        self.sim.score = Score::new();
+        self.sim.events = Events::new();
         self.tick = 0;
         self.last_input.clear();
-        self.net_queue = NetQueue::new();
+        self.sim.net_queue = NetQueue::new();
         self.accumulator = 0.0;
         self.last_tick_time = self.env.now();
-        self.time = Time::default();
+        self.sim.time = Time::default();
 
         // Reset world entities (keep clients)
-        self.world.clear();
+        self.sim.world.clear();
 
         // Respawn ball
-        let ball_pos = self.map.ball_spawn();
-        let ball_vel = glam::Vec2::new(self.config.ball_speed_initial, 0.0);
-        create_ball(&mut self.world, ball_pos, ball_vel);
+        let ball_pos = self.sim.map.ball_spawn();
+        let ball_vel = glam::Vec2::new(self.sim.config.ball_speed_initial, 0.0);
+        create_ball(&mut self.sim.world, ball_pos, ball_vel);
 
         // Respawn paddles
         for &player_id in self.clients.keys() {
-            let paddle_y = self.map.paddle_spawn(player_id).y;
-            create_paddle(&mut self.world, player_id, paddle_y);
+            let paddle_y = self.sim.map.paddle_spawn(PlayerId(player_id)).y;
+            create_paddle(&mut self.sim.world, PlayerId(player_id), paddle_y);
         }
 
         // Set state to countdown
@@ -356,7 +334,6 @@ impl GameState {
             return None;
         }
 
-        self.time.dt = 0.016; // ~60 Hz
         self.tick += 1;
 
         if self.tick % 60 == 0 {
@@ -367,23 +344,13 @@ impl GameState {
             ));
         }
 
-        game_core::step(
-            &mut self.world,
-            &mut self.time,
-            &self.map,
-            &self.config,
-            &mut self.score,
-            &mut self.events,
-            &mut self.net_queue,
-            &mut self.rng,
-            &mut self.respawn_state,
-        );
+        self.sim.step();
 
         // Return winner if any
-        if let Some(winner) = self.score.has_winner(self.config.win_score) {
-            self.broadcast_game_over(winner);
+        if let Some(winner) = self.sim.score.has_winner(self.sim.config.win_score) {
+            self.broadcast_game_over(winner.0);
             self.match_state = MatchState::GameOver;
-            return Some(winner);
+            return Some(winner.0);
         }
 
         None
@@ -392,6 +359,7 @@ impl GameState {
     pub fn generate_state_message(&self) -> S2C {
         // Get ball position and velocity
         let (ball_x, ball_y, ball_vx, ball_vy) = self
+            .sim
             .world
             .query::<&Ball>()
             .iter()
@@ -404,11 +372,11 @@ impl GameState {
         let mut paddle_right_y = 12.0;
         let mut paddle_count = 0;
 
-        for (_e, paddle) in self.world.query::<&Paddle>().iter() {
+        for (_e, paddle) in self.sim.world.query::<&Paddle>().iter() {
             paddle_count += 1;
-            if paddle.player_id == 0 {
+            if paddle.player_id == PlayerId(0) {
                 paddle_left_y = paddle.y;
-            } else if paddle.player_id == 1 {
+            } else if paddle.player_id == PlayerId(1) {
                 paddle_right_y = paddle.y;
             }
         }
@@ -427,8 +395,8 @@ impl GameState {
             ball_vy,
             paddle_left_y,
             paddle_right_y,
-            score_left: self.score.left,
-            score_right: self.score.right,
+            score_left: self.sim.score.left,
+            score_right: self.sim.score.right,
         })
     }
 

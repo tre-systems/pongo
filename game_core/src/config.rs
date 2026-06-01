@@ -1,3 +1,5 @@
+use crate::PlayerId;
+
 /// Game tuning parameters for Pong
 #[derive(Debug, Clone, Copy)]
 pub struct Params;
@@ -23,8 +25,9 @@ impl Params {
     pub const WIN_SCORE: u8 = 5;
 
     // Physics
-    pub const FIXED_DT: f32 = 0.0166;
-    pub const MAX_DT: f32 = 0.1;
+    /// The single fixed simulation timestep (60 Hz). Every host advances the
+    /// simulation at this rate; see `Simulation::step`.
+    pub const FIXED_DT: f32 = 1.0 / 60.0;
 }
 
 /// Game configuration
@@ -67,18 +70,12 @@ impl Config {
     }
 
     /// Get X position for paddle based on player ID
-    pub fn paddle_x(&self, player_id: u8) -> f32 {
-        if player_id == 0 {
+    pub fn paddle_x(&self, player_id: PlayerId) -> f32 {
+        if player_id == PlayerId::LEFT {
             1.5 // Left paddle
         } else {
             self.arena_width - 1.5 // Right paddle
         }
-    }
-
-    /// Clamp paddle Y to arena bounds
-    pub fn clamp_paddle_y(&self, y: f32) -> f32 {
-        let half_height = self.paddle_height / 2.0;
-        y.clamp(half_height, self.arena_height - half_height)
     }
 }
 
@@ -89,20 +86,11 @@ mod tests {
     #[test]
     fn test_config_paddle_x() {
         let config = Config::new();
-        assert_eq!(config.paddle_x(0), 1.5, "Left paddle X position");
-        assert_eq!(config.paddle_x(1), 30.5, "Right paddle X position");
-    }
-
-    #[test]
-    fn test_config_clamp_paddle_y() {
-        let config = Config::new();
-        let half_height = config.paddle_height / 2.0;
-        assert_eq!(config.clamp_paddle_y(0.0), half_height);
+        assert_eq!(config.paddle_x(PlayerId(0)), 1.5, "Left paddle X position");
         assert_eq!(
-            config.clamp_paddle_y(100.0),
-            config.arena_height - half_height
+            config.paddle_x(PlayerId(1)),
+            30.5,
+            "Right paddle X position"
         );
-        let valid_y = 12.0;
-        assert_eq!(config.clamp_paddle_y(valid_y), valid_y);
     }
 }
