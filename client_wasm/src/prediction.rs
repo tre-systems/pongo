@@ -176,7 +176,8 @@ mod tests {
         assert!(predictor.is_active());
         assert_eq!(predictor.predicted_tick, 100);
         assert_eq!(predictor.last_reconciled_tick, 100);
-        assert!(predictor.world.is_some());
+        // The simulation was populated with the server's paddles.
+        assert!(predictor.get_paddle_y(0).is_some());
     }
 
     #[wasm_bindgen_test]
