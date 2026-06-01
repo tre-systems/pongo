@@ -12,6 +12,7 @@ pub enum FsmState {
     Idle,
     CountdownLocal,
     PlayingLocal,
+    Paused,
     Connecting,
     Waiting,
     CountdownMulti,
@@ -19,6 +20,7 @@ pub enum FsmState {
     GameOverLocal,
     GameOverMulti,
     Disconnected,
+    Reconnecting,
 }
 
 /// Actions that trigger state transitions
@@ -38,6 +40,11 @@ pub enum GameAction {
     Leave,
     PlayAgain,
     RematchStarted,
+    Pause,
+    Resume,
+    ConnectionLost,
+    Reconnected,
+    ReconnectFailed,
 }
 
 /// Result of a state transition
@@ -143,6 +150,11 @@ impl GameFsm {
             "LEAVE" => GameAction::Leave,
             "PLAY_AGAIN" => GameAction::PlayAgain,
             "REMATCH_STARTED" => GameAction::RematchStarted,
+            "PAUSE" => GameAction::Pause,
+            "RESUME" => GameAction::Resume,
+            "CONNECTION_LOST" => GameAction::ConnectionLost,
+            "RECONNECTED" => GameAction::Reconnected,
+            "RECONNECT_FAILED" => GameAction::ReconnectFailed,
             _ => {
                 return TransitionResult {
                     success: false,
@@ -170,6 +182,11 @@ impl GameFsm {
             // From PlayingLocal
             (FsmState::PlayingLocal, GameAction::GameOver) => Some(FsmState::GameOverLocal),
             (FsmState::PlayingLocal, GameAction::Quit) => Some(FsmState::Idle),
+            (FsmState::PlayingLocal, GameAction::Pause) => Some(FsmState::Paused),
+
+            // From Paused (local games only)
+            (FsmState::Paused, GameAction::Resume) => Some(FsmState::PlayingLocal),
+            (FsmState::Paused, GameAction::Quit) => Some(FsmState::Idle),
 
             // From Connecting
             (FsmState::Connecting, GameAction::Connected) => Some(FsmState::Waiting),
@@ -183,10 +200,18 @@ impl GameFsm {
             // From CountdownMulti
             (FsmState::CountdownMulti, GameAction::CountdownDone) => Some(FsmState::PlayingMulti),
             (FsmState::CountdownMulti, GameAction::Disconnected) => Some(FsmState::Disconnected),
+            (FsmState::CountdownMulti, GameAction::ConnectionLost) => Some(FsmState::Reconnecting),
 
             // From PlayingMulti
             (FsmState::PlayingMulti, GameAction::GameOver) => Some(FsmState::GameOverMulti),
             (FsmState::PlayingMulti, GameAction::Disconnected) => Some(FsmState::Disconnected),
+            (FsmState::PlayingMulti, GameAction::ConnectionLost) => Some(FsmState::Reconnecting),
+
+            // From Reconnecting (a dropped multiplayer client trying to return)
+            (FsmState::Reconnecting, GameAction::Reconnected) => Some(FsmState::CountdownMulti),
+            (FsmState::Reconnecting, GameAction::ReconnectFailed) => Some(FsmState::Disconnected),
+            (FsmState::Reconnecting, GameAction::Disconnected) => Some(FsmState::Disconnected),
+            (FsmState::Reconnecting, GameAction::Leave) => Some(FsmState::Idle),
 
             // From GameOverLocal
             (FsmState::GameOverLocal, GameAction::PlayAgain) => Some(FsmState::CountdownLocal),
@@ -224,6 +249,7 @@ impl GameFsm {
                 | FsmState::CountdownMulti
                 | FsmState::PlayingMulti
                 | FsmState::GameOverMulti
+                | FsmState::Reconnecting
         )
     }
 
@@ -281,6 +307,43 @@ mod tests {
     }
 
     #[test]
+    fn test_pause_resume_local() {
+        let mut fsm = GameFsm::new();
+        fsm.transition(GameAction::StartLocal);
+        fsm.transition(GameAction::CountdownDone);
+        assert_eq!(fsm.state(), FsmState::PlayingLocal);
+
+        assert!(fsm.transition(GameAction::Pause).success);
+        assert_eq!(fsm.state(), FsmState::Paused);
+
+        assert!(fsm.transition(GameAction::Resume).success);
+        assert_eq!(fsm.state(), FsmState::PlayingLocal);
+    }
+
+    #[test]
+    fn test_quit_from_paused() {
+        let mut fsm = GameFsm::new();
+        fsm.transition(GameAction::StartLocal);
+        fsm.transition(GameAction::CountdownDone);
+        fsm.transition(GameAction::Pause);
+        assert!(fsm.transition(GameAction::Quit).success);
+        assert_eq!(fsm.state(), FsmState::Idle);
+    }
+
+    #[test]
+    fn test_multiplayer_cannot_pause() {
+        let mut fsm = GameFsm::new();
+        fsm.transition(GameAction::CreateMatch);
+        fsm.transition(GameAction::Connected);
+        fsm.transition(GameAction::OpponentJoined);
+        fsm.transition(GameAction::CountdownDone);
+        assert_eq!(fsm.state(), FsmState::PlayingMulti);
+        // Pause is local-only; it must not apply during multiplayer.
+        assert!(!fsm.transition(GameAction::Pause).success);
+        assert_eq!(fsm.state(), FsmState::PlayingMulti);
+    }
+
+    #[test]
     fn test_multiplayer_flow() {
         let mut fsm = GameFsm::new();
         fsm.transition(GameAction::CreateMatch);
@@ -291,6 +354,38 @@ mod tests {
         assert_eq!(fsm.state(), FsmState::CountdownMulti);
         fsm.transition(GameAction::CountdownDone);
         assert_eq!(fsm.state(), FsmState::PlayingMulti);
+    }
+
+    #[test]
+    fn test_reconnect_flow() {
+        let mut fsm = GameFsm::new();
+        fsm.transition(GameAction::CreateMatch);
+        fsm.transition(GameAction::Connected);
+        fsm.transition(GameAction::OpponentJoined);
+        fsm.transition(GameAction::CountdownDone);
+        assert_eq!(fsm.state(), FsmState::PlayingMulti);
+
+        // Connection drops mid-match -> Reconnecting (not straight to Disconnected).
+        assert!(fsm.transition(GameAction::ConnectionLost).success);
+        assert_eq!(fsm.state(), FsmState::Reconnecting);
+
+        // Successful reconnect resumes via the ready-countdown.
+        assert!(fsm.transition(GameAction::Reconnected).success);
+        assert_eq!(fsm.state(), FsmState::CountdownMulti);
+    }
+
+    #[test]
+    fn test_reconnect_gives_up() {
+        let mut fsm = GameFsm::new();
+        fsm.transition(GameAction::CreateMatch);
+        fsm.transition(GameAction::Connected);
+        fsm.transition(GameAction::OpponentJoined);
+        fsm.transition(GameAction::CountdownDone);
+        fsm.transition(GameAction::ConnectionLost);
+        assert_eq!(fsm.state(), FsmState::Reconnecting);
+
+        assert!(fsm.transition(GameAction::ReconnectFailed).success);
+        assert_eq!(fsm.state(), FsmState::Disconnected);
     }
 
     #[test]

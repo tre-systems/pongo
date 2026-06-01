@@ -147,6 +147,51 @@ body::before {
   opacity: 1;
 }
 
+/* Reconnect overlay */
+#reconnectOverlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.78);
+  backdrop-filter: blur(4px);
+  border-radius: 14px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 18px;
+  z-index: 150;
+}
+
+#reconnectOverlay.show {
+  display: flex;
+}
+
+#reconnectText {
+  font-family: "Outfit", sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #fff;
+  text-align: center;
+  padding: 0 20px;
+}
+
+.reconnect-spinner {
+  width: 42px;
+  height: 42px;
+  border: 4px solid rgba(255, 255, 255, 0.2);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: reconnect-spin 0.9s linear infinite;
+}
+
+@keyframes reconnect-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 #victoryText {
   font-family: "Outfit", sans-serif;
   font-size: 64px;
@@ -411,6 +456,29 @@ body::before {
 .btn-quit:hover {
   transform: translateY(-2px);
   box-shadow: 0 6px 20px rgba(220, 38, 38, 0.4);
+}
+
+.btn-pause {
+  width: 100%;
+  padding: 14px 20px;
+  background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%);
+  border: none;
+  border-radius: 10px;
+  color: white;
+  font-family: "Outfit", sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(79, 70, 229, 0.3);
+  transition: all 0.2s ease;
+  margin-top: 10px;
+}
+
+.btn-pause:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(79, 70, 229, 0.4);
 }
 
 .waiting-state {

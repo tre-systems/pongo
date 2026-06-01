@@ -45,6 +45,10 @@
         <canvas id="canvas" width="640" height="480"></canvas>
 
         <div id="countdown"></div>
+        <div id="reconnectOverlay">
+          <div class="reconnect-spinner"></div>
+          <div id="reconnectText">Reconnecting…</div>
+        </div>
         <div id="victoryOverlay">
           <div id="victoryText">VICTORY</div>
           <div class="victory-buttons">
@@ -110,6 +114,8 @@
             </div>
           </div>
 
+          <!-- Pause/Resume button for local games -->
+          <button id="pauseBtn" class="btn-pause" style="display: none">Pause</button>
           <!-- Quit button for local games -->
           <button id="quitBtn" class="btn-quit" style="display: none">Quit Game</button>
           <!-- Waiting for opponent -->

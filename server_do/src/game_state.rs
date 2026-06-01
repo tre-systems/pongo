@@ -7,6 +7,9 @@ use proto::*;
 use std::collections::HashMap;
 use worker::*;
 
+/// How long a dropped player's slot is held for reconnection before forfeiting (ms).
+pub const RECONNECT_GRACE_MS: u64 = 20_000;
+
 /// Server-side match lifecycle state
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MatchState {
@@ -16,6 +19,8 @@ pub enum MatchState {
     Countdown,
     /// Game in progress
     Playing,
+    /// A player dropped mid-match; the sim is frozen awaiting their reconnect
+    Paused,
     /// Game ended
     GameOver,
 }
@@ -56,6 +61,7 @@ impl Environment for WasmEnv {
 pub struct ClientInfo {
     pub client: Box<dyn GameClient>,
     pub last_activity: u64, // Unix timestamp in seconds
+    pub connected: bool,    // false while the slot is held open for a reconnect
 }
 
 // Game state wrapper for interior mutability
@@ -78,6 +84,7 @@ pub struct GameState {
     pub last_input: HashMap<u8, i8>, // Track last input per player to reduce logging
     pub last_tick_time: u64,         // Unix timestamp in ms
     pub accumulator: f32,            // For alarm loop catch-up timing
+    pub reconnect_deadline_ms: u64,  // While Paused: forfeit once env.now() passes this
 }
 
 impl GameState {
@@ -117,6 +124,7 @@ impl GameState {
             last_input: HashMap::new(),
             last_tick_time: now,
             accumulator: 0.0,
+            reconnect_deadline_ms: 0,
         }
     }
 
@@ -137,6 +145,7 @@ impl GameState {
             ClientInfo {
                 client,
                 last_activity: now,
+                connected: true,
             },
         );
 
@@ -163,6 +172,48 @@ impl GameState {
                 let _ = client_info.client.send_bytes(&bytes);
             }
         }
+    }
+
+    /// Handle a socket close. Mid-match this starts a reconnect grace period
+    /// (slot kept, sim frozen); otherwise the player is removed immediately.
+    pub fn handle_disconnect(&mut self, player_id: u8) {
+        let mid_match = matches!(self.match_state, MatchState::Playing | MatchState::Countdown);
+        if mid_match && self.clients.contains_key(&player_id) {
+            if let Some(client_info) = self.clients.get_mut(&player_id) {
+                client_info.connected = false;
+            }
+            self.match_state = MatchState::Paused;
+            self.reconnect_deadline_ms = self.env.now() + RECONNECT_GRACE_MS;
+            self.env.log(format!(
+                "DO: Player {player_id} dropped mid-match; pausing for reconnect"
+            ));
+            self.broadcast_to_all(&S2C::OpponentReconnecting);
+        } else {
+            self.remove_player(player_id);
+        }
+    }
+
+    /// Re-attach a returning player to their held-open slot and resume the match.
+    /// Returns the reconnected player id, or None if there is no slot to resume.
+    pub fn reconnect_player(&mut self, client: Box<dyn GameClient>) -> Option<u8> {
+        let pid = self
+            .clients
+            .iter()
+            .find_map(|(&p, info)| if !info.connected { Some(p) } else { None })?;
+        let now = self.env.now() / 1000;
+        if let Some(client_info) = self.clients.get_mut(&pid) {
+            client_info.client = client;
+            client_info.connected = true;
+            client_info.last_activity = now;
+        }
+        self.env
+            .log(format!("DO: Player {pid} reconnected; resuming match"));
+        self.broadcast_to_all(&S2C::OpponentReconnected);
+        // Resume with a fresh ready-countdown; the world (ball, paddles, score) is preserved.
+        self.match_state = MatchState::Countdown;
+        self.countdown_remaining = 3;
+        self.reconnect_deadline_ms = 0;
+        Some(pid)
     }
 
     pub fn remove_player(&mut self, player_id: u8) {
@@ -205,6 +256,16 @@ impl GameState {
                 self.broadcast_to_all(&S2C::OpponentDisconnected);
                 // Reset to waiting state
                 self.match_state = MatchState::Waiting;
+            }
+            MatchState::Paused => {
+                // A reconnect grace period ended (or the other player also left).
+                // Whoever is still in the room wins by forfeit.
+                if let Some(&remaining_player) = self.clients.keys().next() {
+                    self.broadcast_game_over(remaining_player);
+                    self.match_state = MatchState::GameOver;
+                } else {
+                    self.match_state = MatchState::Waiting;
+                }
             }
             MatchState::Waiting => {
                 // Just update state

@@ -74,6 +74,13 @@ pub enum S2C {
 
     /// Pong response to ping
     Pong { t_ms: u32 },
+
+    /// Opponent dropped; the match is paused awaiting their reconnect.
+    /// (New variants are appended to keep postcard variant indices stable.)
+    OpponentReconnecting,
+
+    /// Opponent reconnected; the match is about to resume.
+    OpponentReconnected,
 }
 
 // ============================================================================

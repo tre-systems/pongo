@@ -351,7 +351,8 @@ impl WasmClient {
     }
 
     /// Get and clear the latest match event from server
-    /// Returns: "match_found", "countdown:3", "countdown:2", "countdown:1", "game_start", "opponent_disconnected", or empty string
+    /// Returns: "match_found", "countdown:3", "countdown:2", "countdown:1", "game_start",
+    /// "opponent_disconnected", "opponent_reconnecting", "opponent_reconnected", or empty string
     #[wasm_bindgen]
     pub fn get_match_event(&mut self) -> String {
         use state::MatchEvent;
@@ -362,6 +363,8 @@ impl WasmClient {
             MatchEvent::Countdown(n) => format!("countdown:{}", n),
             MatchEvent::GameStart => "game_start".to_string(),
             MatchEvent::OpponentDisconnected => "opponent_disconnected".to_string(),
+            MatchEvent::OpponentReconnecting => "opponent_reconnecting".to_string(),
+            MatchEvent::OpponentReconnected => "opponent_reconnected".to_string(),
         }
     }
 
@@ -382,6 +385,15 @@ impl WasmClient {
         self.0.game_state.reset();
         self.0.paddle_dir = 0;
         self.0.local_paddle_y = 12.0;
+    }
+
+    /// Reset only the simulation clock (not the game). Call when resuming from a
+    /// pause so the first frame doesn't accumulate a large dt and fast-forward.
+    #[wasm_bindgen]
+    pub fn reset_sim_timing(&mut self) {
+        self.0.last_sim_time = 0.0;
+        self.0.last_frame_time = 0.0;
+        self.0.sim_accumulator = 0.0;
     }
 
     /// Reset client state for a new multiplayer session

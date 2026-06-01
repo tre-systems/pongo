@@ -6,7 +6,7 @@ use std::time::Duration;
 use worker::*;
 
 mod game_state;
-use game_state::{GameState, WasmEnv};
+use game_state::{GameState, MatchState, WasmEnv};
 
 #[cfg(test)]
 mod tests;
@@ -105,7 +105,7 @@ impl DurableObject for MatchDO {
 
     async fn websocket_close(
         &self,
-        _ws: WebSocket,
+        ws: WebSocket,
         code: usize,
         reason: String,
         _was_clean: bool,
@@ -116,15 +116,19 @@ impl DurableObject for MatchDO {
             reason
         );
 
+        // Recover which player owned this socket from its attachment.
+        let player_id = ws.deserialize_attachment::<u8>().ok().flatten();
+
         let mut gs = self.game_state.borrow_mut();
 
-        // workaround for missing WS ID
-        let player_id_to_remove = gs.clients.keys().next().copied();
-
-        if let Some(player_id) = player_id_to_remove {
+        if let Some(player_id) = player_id {
             gs.env
-                .log(format!("DO: Removing player {player_id} after close event"));
-            gs.remove_player(player_id);
+                .log(format!("DO: Player {player_id} socket closed"));
+            // Mid-match this starts a reconnect grace period; otherwise it removes the player.
+            gs.handle_disconnect(player_id);
+        } else {
+            gs.env
+                .log("DO: Close event with no attached player id; ignoring".to_string());
         }
 
         gs.env.log(format!(
@@ -141,8 +145,6 @@ impl DurableObject for MatchDO {
 
     #[allow(clippy::await_holding_refcell_ref)] // We drop the RefCell borrow before await
     async fn alarm(&self) -> Result<Response> {
-        use game_state::MatchState;
-
         let mut gs = self.game_state.borrow_mut();
 
         // Check for idle clients and disconnect them (1 minute timeout)
@@ -220,6 +222,21 @@ impl DurableObject for MatchDO {
 
                 tick_interval_ms
             }
+            MatchState::Paused => {
+                // Sim is frozen awaiting reconnect; forfeit once the grace window passes.
+                if now_ms >= gs.reconnect_deadline_ms {
+                    let dropped = gs
+                        .clients
+                        .iter()
+                        .find_map(|(&p, info)| if !info.connected { Some(p) } else { None });
+                    if let Some(pid) = dropped {
+                        gs.env
+                            .log("DO: Reconnect grace expired; forfeiting".to_string());
+                        gs.remove_player(pid);
+                    }
+                }
+                500
+            }
             MatchState::GameOver => {
                 // Low frequency, just for cleanup
                 500
@@ -244,9 +261,35 @@ impl MatchDO {
         let should_start_alarm = {
             let mut gs = self.game_state.borrow_mut();
             match msg {
+                C2S::Join { code: _, .. } if gs.match_state == MatchState::Paused => {
+                    // A player is returning to a slot held open during the grace period.
+                    if let Some(player_id) = gs.reconnect_player(Box::new(ws.clone())) {
+                        if let Err(e) = ws.serialize_attachment(player_id) {
+                            console_error!("DO: Failed to attach player id: {e:?}");
+                        }
+                        let welcome = S2C::Welcome { player_id };
+                        if let Ok(bytes) = welcome.to_bytes() {
+                            let _ = ws.send_with_bytes(&bytes);
+                        }
+                        let state_msg = gs.generate_state_message();
+                        if let Ok(bytes) = state_msg.to_bytes() {
+                            let _ = ws.send_with_bytes(&bytes);
+                        }
+                    } else {
+                        gs.env
+                            .log("DO: Reconnect Join but no open slot to resume".to_string());
+                    }
+                    // The alarm loop is already running while paused.
+                    None
+                }
                 C2S::Join { code: _, .. } => {
                     // We need to clone WS here because add_player takes ownership
                     if let Some((player_id, was_empty)) = gs.add_player(Box::new(ws.clone())) {
+                        // Tag this socket with its player id so we can identify it on
+                        // close/ping (the hibernation API gives us back the same socket).
+                        if let Err(e) = ws.serialize_attachment(player_id) {
+                            console_error!("DO: Failed to attach player id: {e:?}");
+                        }
                         gs.env.log(format!(
                             "DO: Player {player_id} joining (clients was empty: {was_empty})"
                         ));
@@ -284,10 +327,12 @@ impl MatchDO {
                     None
                 }
                 C2S::Ping { t_ms } => {
-                    // Update activity for all (workaround)
+                    // Refresh activity for the sender only, identified by socket attachment.
                     let now = gs.env.now() / 1000;
-                    for client_info in gs.clients.values_mut() {
-                        client_info.last_activity = now;
+                    if let Ok(Some(player_id)) = ws.deserialize_attachment::<u8>() {
+                        if let Some(client_info) = gs.clients.get_mut(&player_id) {
+                            client_info.last_activity = now;
+                        }
                     }
 
                     let pong = S2C::Pong { t_ms };

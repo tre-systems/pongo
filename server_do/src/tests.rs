@@ -127,6 +127,65 @@ fn test_handle_input() {
 }
 
 #[test]
+fn test_disconnect_midmatch_pauses_for_reconnect() {
+    let mut gs = GameState::new(Box::new(MockEnv::new()));
+    gs.add_player(Box::new(MockGameClient::new()));
+    gs.add_player(Box::new(MockGameClient::new()));
+    gs.match_state = MatchState::Playing; // pretend the countdown finished
+
+    gs.handle_disconnect(0);
+
+    assert_eq!(gs.match_state, MatchState::Paused);
+    assert_eq!(gs.clients.len(), 2, "the slot is held open during grace");
+    assert!(!gs.clients.get(&0).unwrap().connected);
+    assert!(gs.clients.get(&1).unwrap().connected);
+    assert!(gs.reconnect_deadline_ms > 0);
+}
+
+#[test]
+fn test_reconnect_resumes_match() {
+    let mut gs = GameState::new(Box::new(MockEnv::new()));
+    gs.add_player(Box::new(MockGameClient::new()));
+    gs.add_player(Box::new(MockGameClient::new()));
+    gs.match_state = MatchState::Playing;
+    gs.handle_disconnect(0);
+    assert_eq!(gs.match_state, MatchState::Paused);
+
+    let pid = gs.reconnect_player(Box::new(MockGameClient::new()));
+    assert_eq!(pid, Some(0));
+    assert_eq!(gs.match_state, MatchState::Countdown);
+    assert_eq!(gs.clients.len(), 2);
+    assert!(gs.clients.get(&0).unwrap().connected);
+    assert_eq!(gs.reconnect_deadline_ms, 0);
+}
+
+#[test]
+fn test_grace_expiry_forfeits_to_remaining_player() {
+    let mut gs = GameState::new(Box::new(MockEnv::new()));
+    gs.add_player(Box::new(MockGameClient::new()));
+    gs.add_player(Box::new(MockGameClient::new()));
+    gs.match_state = MatchState::Playing;
+    gs.handle_disconnect(0);
+    assert_eq!(gs.match_state, MatchState::Paused);
+
+    // Grace-expiry path (what the alarm does): remove the dropped player.
+    gs.remove_player(0);
+    assert_eq!(gs.match_state, MatchState::GameOver);
+    assert_eq!(gs.clients.len(), 1);
+    assert!(gs.clients.contains_key(&1));
+}
+
+#[test]
+fn test_disconnect_while_waiting_removes_immediately() {
+    let mut gs = GameState::new(Box::new(MockEnv::new()));
+    gs.add_player(Box::new(MockGameClient::new()));
+    // Only one player and still Waiting: a disconnect removes rather than pausing.
+    gs.handle_disconnect(0);
+    assert_eq!(gs.match_state, MatchState::Waiting);
+    assert_eq!(gs.clients.len(), 0);
+}
+
+#[test]
 fn test_broadcast_state() {
     let mut gs = GameState::new(Box::new(MockEnv::new()));
 

@@ -10,6 +10,8 @@ pub enum MatchEvent {
     Countdown(u8),
     GameStart,
     OpponentDisconnected,
+    OpponentReconnecting,
+    OpponentReconnected,
 }
 
 /// Game state tracking with interpolation

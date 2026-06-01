@@ -279,7 +279,8 @@ mod tests {
     use crate::state::GameStateSnapshot;
     use wasm_bindgen_test::*;
 
-    // Default configuration (run in whatever environment wasm-pack uses, e.g. node)
+    // Run in a headless browser so CI can execute these with `wasm-pack test --headless --chrome`.
+    wasm_bindgen_test_configure!(run_in_browser);
 
     #[wasm_bindgen_test]
     fn test_initialization() {

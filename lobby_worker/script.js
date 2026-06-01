@@ -106,6 +106,7 @@ const GameState = {
   IDLE: FsmState.Idle,
   COUNTDOWN_LOCAL: FsmState.CountdownLocal,
   PLAYING_LOCAL: FsmState.PlayingLocal,
+  PAUSED: FsmState.Paused,
   CONNECTING: FsmState.Connecting,
   WAITING: FsmState.Waiting,
   COUNTDOWN_MULTI: FsmState.CountdownMulti,
@@ -113,7 +114,15 @@ const GameState = {
   GAME_OVER_LOCAL: FsmState.GameOverLocal,
   GAME_OVER_MULTI: FsmState.GameOverMulti,
   DISCONNECTED: FsmState.Disconnected,
+  RECONNECTING: FsmState.Reconnecting,
 };
+
+// Reconnect state (multiplayer): retry the socket within the server's grace window.
+let intentionalClose = false;
+let reconnectAttempts = 0;
+let reconnectTimerId = null;
+const MAX_RECONNECT_ATTEMPTS = 10;
+const RECONNECT_INTERVAL_MS = 1500;
 
 // Create Rust FSM instance (after init())
 const rustFsm = new GameFsm();
@@ -122,10 +131,6 @@ const rustFsm = new GameFsm();
 const FSM = {
   get state() {
     return rustFsm.state;
-  },
-
-  canTransition(action) {
-    return true; // Rust FSM handles invalid transitions gracefully
   },
 
   isTransitioning: false,
@@ -148,7 +153,7 @@ const FSM = {
 
       console.log(`FSM: ${result.from_state} --[${action}]--> ${result.to_state}`);
       await this.exitState(prevState);
-      await this.enterState(rustFsm.state);
+      await this.enterState(rustFsm.state, prevState);
       return true;
     } finally {
       this.isTransitioning = false;
@@ -172,12 +177,15 @@ const FSM = {
       case FsmState.GameOverLocal:
         hideVictoryOverlay();
         break;
+      case FsmState.Reconnecting:
+        stopReconnect();
+        break;
       case FsmState.Connecting:
         break;
     }
   },
 
-  async enterState(state) {
+  async enterState(state, prevState) {
     updateUIForState(state);
     switch (state) {
       case FsmState.Idle:
@@ -187,7 +195,8 @@ const FSM = {
         await enterCountdownLocal();
         break;
       case FsmState.PlayingLocal:
-        enterPlayingLocal();
+        // Resuming from a pause must not restart the match.
+        enterPlayingLocal(prevState === FsmState.Paused);
         break;
       case FsmState.Connecting:
         await enterConnecting();
@@ -207,6 +216,9 @@ const FSM = {
           startEventPolling();
         }
         break;
+      case FsmState.Reconnecting:
+        await enterReconnecting();
+        break;
       case FsmState.Disconnected:
         enterDisconnected();
         break;
@@ -220,6 +232,7 @@ const FSM = {
 async function enterIdle() {
   closeWebSocket();
   stopGameLoop();
+  stopReconnect();
   lastScore = [0, 0];
   currentMatchCode = null;
 
@@ -244,10 +257,16 @@ async function enterCountdownLocal() {
   });
 }
 
-function enterPlayingLocal() {
-  client.start_local_game();
-  lastScore = [0, 0];
-  updateScore(0, 0);
+function enterPlayingLocal(resuming = false) {
+  if (resuming) {
+    // Resuming after a pause: keep the in-progress game, just unfreeze cleanly
+    // so the first frame doesn't accumulate a large dt and fast-forward.
+    client.reset_sim_timing();
+  } else {
+    client.start_local_game();
+    lastScore = [0, 0];
+    updateScore(0, 0);
+  }
   document.body.classList.add("game-active");
   setupInputIfNeeded();
   startRenderLoop();
@@ -291,29 +310,7 @@ async function enterConnecting() {
       }
     };
 
-    ws.onmessage = (event) => {
-      if (event.data instanceof ArrayBuffer) {
-        try {
-          client.on_message(new Uint8Array(event.data));
-
-          // Poll for match events from server
-          const matchEvent = client.get_match_event();
-          if (matchEvent) {
-            handleMatchEvent(matchEvent);
-          }
-
-          // Update score if playing
-          if (FSM.state === GameState.PLAYING_MULTI) {
-            const score = client.get_score();
-            if (score.length >= 2) {
-              updateScore(score[0], score[1]);
-            }
-          }
-        } catch (e) {
-          console.error("Message error:", e);
-        }
-      }
-    };
+    ws.onmessage = onWsMessage;
 
     ws.onerror = () => {
       if (FSM.state === GameState.CONNECTING) {
@@ -322,9 +319,14 @@ async function enterConnecting() {
     };
 
     ws.onclose = () => {
-      if (FSM.state === GameState.WAITING || FSM.state === GameState.COUNTDOWN_MULTI) {
-        FSM.transition("DISCONNECTED");
-      } else if (FSM.state === GameState.PLAYING_MULTI || FSM.state === GameState.GAME_OVER_MULTI) {
+      if (intentionalClose) {
+        intentionalClose = false;
+        return;
+      }
+      if (FSM.state === GameState.PLAYING_MULTI || FSM.state === GameState.COUNTDOWN_MULTI) {
+        // Recover within the server's grace window instead of ending the match.
+        FSM.transition("CONNECTION_LOST");
+      } else if (FSM.state === GameState.WAITING || FSM.state === GameState.GAME_OVER_MULTI) {
         FSM.transition("DISCONNECTED");
       } else if (FSM.state === GameState.CONNECTING) {
         FSM.transition("CONNECTION_FAILED");
@@ -382,6 +384,11 @@ function handleMatchEvent(event) {
     ) {
       FSM.transition("DISCONNECTED");
     }
+  } else if (event === "opponent_reconnecting") {
+    // We're still connected; our opponent dropped and the match is paused.
+    showReconnectOverlay("Opponent reconnecting…");
+  } else if (event === "opponent_reconnected") {
+    hideReconnectOverlay();
   }
 }
 
@@ -433,6 +440,7 @@ function enterPlayingMulti() {
 function enterDisconnected() {
   closeWebSocket();
   stopGameLoop();
+  hideReconnectOverlay();
 }
 
 // ========================================
@@ -443,6 +451,10 @@ function updateUIForState(state) {
   const lobbyControls = document.getElementById("lobbyControls");
   const activeMatchControls = document.getElementById("activeMatchControls");
   const quitBtn = document.getElementById("quitBtn");
+  const pauseBtn = document.getElementById("pauseBtn");
+
+  // Pause/Resume is local-only; hidden by default and shown in the cases below.
+  pauseBtn.style.display = "none";
 
   switch (state) {
     case GameState.IDLE:
@@ -467,6 +479,17 @@ function updateUIForState(state) {
       playBtn.classList.add("playing");
       lobbyControls.style.display = "none";
       quitBtn.style.display = "block";
+      pauseBtn.style.display = "block";
+      pauseBtn.textContent = "Pause";
+      break;
+
+    case GameState.PAUSED:
+      playBtn.textContent = "Paused";
+      playBtn.classList.remove("playing");
+      lobbyControls.style.display = "none";
+      quitBtn.style.display = "block";
+      pauseBtn.style.display = "block";
+      pauseBtn.textContent = "Resume";
       break;
 
     case GameState.CONNECTING:
@@ -496,6 +519,14 @@ function updateUIForState(state) {
     case GameState.GAME_OVER_MULTI:
       playBtn.textContent = "Game Over";
       playBtn.classList.remove("playing");
+      activeMatchControls.style.display = "none";
+      break;
+
+    case GameState.RECONNECTING:
+      playBtn.textContent = "Reconnecting...";
+      playBtn.disabled = true;
+      playBtn.classList.remove("playing");
+      lobbyControls.style.display = "none";
       activeMatchControls.style.display = "none";
       break;
 
@@ -529,7 +560,9 @@ function updateMetrics() {
         document.getElementById("fps").textContent = Math.round(metrics[0]);
         document.getElementById("ping").textContent = Math.round(metrics[1]);
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error("Metrics update failed:", e);
+    }
   }
 }
 
@@ -564,7 +597,9 @@ function startRenderLoop() {
             return;
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        console.error("Render loop error:", e);
+      }
     }
 
     if (FSM.state === GameState.PLAYING_LOCAL || FSM.state === GameState.PLAYING_MULTI) {
@@ -595,7 +630,9 @@ function startPingInterval() {
       try {
         const pingBytes = client.send_ping();
         ws.send(pingBytes);
-      } catch (e) {}
+      } catch (e) {
+        console.error("Ping failed:", e);
+      }
     }
   }, 2000);
 }
@@ -605,9 +642,120 @@ function startPingInterval() {
 // ========================================
 function closeWebSocket() {
   if (ws) {
+    // Mark this close as intentional so the socket's onclose doesn't try to reconnect.
+    intentionalClose = true;
     ws.close();
     ws = null;
   }
+}
+
+// Shared handler for server messages, used by both the initial and reconnect sockets.
+function onWsMessage(event) {
+  if (!(event.data instanceof ArrayBuffer)) return;
+  try {
+    client.on_message(new Uint8Array(event.data));
+
+    const matchEvent = client.get_match_event();
+    if (matchEvent) {
+      handleMatchEvent(matchEvent);
+    }
+
+    if (FSM.state === GameState.PLAYING_MULTI) {
+      const score = client.get_score();
+      if (score.length >= 2) {
+        updateScore(score[0], score[1]);
+      }
+    }
+  } catch (e) {
+    console.error("Message error:", e);
+  }
+}
+
+// ========================================
+// Reconnect (multiplayer)
+// ========================================
+async function enterReconnecting() {
+  stopGameLoop();
+  showReconnectOverlay("Connection lost — reconnecting…");
+  reconnectAttempts = 0;
+  attemptReconnect();
+}
+
+function attemptReconnect() {
+  reconnectTimerId = null;
+  if (FSM.state !== GameState.RECONNECTING) return;
+
+  if (!currentMatchCode || reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+    FSM.transition("RECONNECT_FAILED");
+    return;
+  }
+  reconnectAttempts++;
+
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const wsUrl = `${protocol}//${window.location.host}/ws/${currentMatchCode}`;
+
+  let sock;
+  try {
+    sock = new WebSocket(wsUrl);
+  } catch (e) {
+    scheduleReconnect();
+    return;
+  }
+  sock.binaryType = "arraybuffer";
+
+  sock.onopen = () => {
+    ws = sock;
+    try {
+      sock.send(client.get_join_bytes(currentMatchCode));
+    } catch (e) {
+      console.error("Reconnect join failed:", e);
+    }
+  };
+
+  sock.onmessage = (event) => {
+    // The first message back means the server re-attached us to our slot.
+    if (FSM.state === GameState.RECONNECTING) {
+      FSM.transition("RECONNECTED");
+    }
+    onWsMessage(event);
+  };
+
+  sock.onerror = () => {};
+
+  sock.onclose = () => {
+    if (intentionalClose) {
+      intentionalClose = false;
+      return;
+    }
+    if (FSM.state === GameState.RECONNECTING) {
+      scheduleReconnect();
+    }
+  };
+}
+
+function scheduleReconnect() {
+  if (reconnectTimerId) clearTimeout(reconnectTimerId);
+  reconnectTimerId = setTimeout(attemptReconnect, RECONNECT_INTERVAL_MS);
+}
+
+function stopReconnect() {
+  if (reconnectTimerId) {
+    clearTimeout(reconnectTimerId);
+    reconnectTimerId = null;
+  }
+  hideReconnectOverlay();
+}
+
+function showReconnectOverlay(text) {
+  const overlay = document.getElementById("reconnectOverlay");
+  if (!overlay) return;
+  document.getElementById("reconnectText").textContent = text;
+  overlay.classList.add("show");
+}
+
+function hideReconnectOverlay() {
+  const overlay = document.getElementById("reconnectOverlay");
+  if (overlay) overlay.classList.remove("show");
 }
 
 function sendInput() {
@@ -617,7 +765,9 @@ function sendInput() {
       if (bytes.length > 0) {
         ws.send(bytes);
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error("Send input failed:", e);
+    }
   }
 }
 
@@ -1000,9 +1150,8 @@ const joinMatch = async function () {
 };
 
 const leaveGame = function () {
-  if (FSM.canTransition("LEAVE")) {
-    FSM.transition("LEAVE");
-  }
+  // The Rust FSM rejects invalid transitions, so this is safe to call from any state.
+  FSM.transition("LEAVE");
 };
 
 // ========================================
@@ -1044,6 +1193,21 @@ async function main() {
         client.stop_local_game();
       }
       FSM.transition("QUIT");
+    });
+
+    // Pause/Resume (local games only)
+    const togglePause = () => {
+      if (FSM.state === GameState.PLAYING_LOCAL) {
+        FSM.transition("PAUSE");
+      } else if (FSM.state === GameState.PAUSED) {
+        FSM.transition("RESUME");
+      }
+    };
+    document.getElementById("pauseBtn").addEventListener("click", togglePause);
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" || e.key === "p" || e.key === "P") {
+        togglePause();
+      }
     });
 
     document.getElementById("quitGameBtn").addEventListener("click", async () => {

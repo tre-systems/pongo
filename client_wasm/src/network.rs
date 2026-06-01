@@ -33,6 +33,12 @@ pub fn handle_message(msg: S2C, game_state: &mut GameState) -> Result<(), String
         S2C::OpponentDisconnected => {
             game_state.match_event = MatchEvent::OpponentDisconnected;
         }
+        S2C::OpponentReconnecting => {
+            game_state.match_event = MatchEvent::OpponentReconnecting;
+        }
+        S2C::OpponentReconnected => {
+            game_state.match_event = MatchEvent::OpponentReconnected;
+        }
         S2C::Pong { t_ms: _ } => {
             // Ping response handled by caller, should not reach here
             return Err("Pong message should be handled separately".to_string());
