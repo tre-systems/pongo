@@ -2,9 +2,10 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const repoRoot = process.cwd();
+const repoRoot = resolve(fileURLToPath(import.meta.url), "../..");
 const diagramDir = join(repoRoot, "docs", "diagrams");
 
 // Graphviz is required to render PNGs from .dot sources. CI installs it before
@@ -29,9 +30,8 @@ if (dotFiles.length === 0) {
 const failures = [];
 
 // Verify each .dot renders cleanly and the committed PNG exists. PNGs are not
-// byte-compared: Graphviz + libcairo emit different bytes across versions, which
-// would produce stale-PNG false positives on every push. The .dot sources are the
-// source of truth; PNGs are committed for in-browser viewing.
+// byte-compared: Graphviz/cairo output varies by version. The .dot sources are
+// canonical; committed PNGs are for in-browser viewing.
 try {
   for (const file of dotFiles) {
     const source = join(diagramDir, file);

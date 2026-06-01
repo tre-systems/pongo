@@ -1,4 +1,4 @@
-import init, { fetch, MatchDO as WasmMatchDO } from "./pkg/lobby_worker.js";
+import init, { fetch as wasmFetch, MatchDO as WasmMatchDO } from "./pkg/lobby_worker.js";
 import wasmUrl from "./pkg/lobby_worker_bg.wasm";
 
 let initPromise;
@@ -11,7 +11,7 @@ export default {
   async fetch(req, env, ctx) {
     try {
       await ensureInit();
-      return await fetch(req, env, ctx);
+      return await wasmFetch(req, env, ctx);
     } catch (error) {
       return new Response(`Error: ${error.message}\n${error.stack}`, {
         status: 500,
@@ -21,6 +21,9 @@ export default {
   },
 };
 
+// The generated WasmMatchDO constructor is synchronous and needs the wasm
+// module ready. The DO runtime can construct it before the top-level init()
+// resolves, so defer construction behind ensureInit().
 class MatchDOWrapper {
   constructor(state, env) {
     this._inner = ensureInit().then(() => new WasmMatchDO(state, env));

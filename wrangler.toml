@@ -3,8 +3,7 @@ main = "worker/index.js"
 compatibility_date = "2024-01-01"
 
 [build]
-# Full build (server + client wasm + static assets), matching `npm run build`, so a
-# standalone `wrangler deploy` produces a complete worker/pkg, not just the server half.
+# Mirror `npm run build` so a standalone `wrangler deploy` produces a complete worker/pkg.
 command = "npm run build"
 
 [assets]

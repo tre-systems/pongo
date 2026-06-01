@@ -56,6 +56,7 @@ pongo/
 npm run build        # Build WASM
 npm run dev          # Local server
 npm run test         # Run tests
+npm run test:all     # Full pre-push gate (prettier, fmt, check, clippy, tests, diagrams)
 npm run deploy       # Deploy to Cloudflare
 ```
 

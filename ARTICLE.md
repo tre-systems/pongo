@@ -69,7 +69,7 @@ At the heart of the project is the `game_core` crate. The entity set is tiny and
 
 The physics simulation lives in a deterministic `step` function. It uses fixed timesteps and predictable math (via [`glam`](https://docs.rs/glam)) so that, given the same inputs, it produces the same results on both the client (WASM) and the server.
 
-Here’s the actual `step` function that runs in both environments:
+Here’s the core of the `step` function that runs in both environments (the respawn-timing and event-bookkeeping lines are elided for clarity):
 
 ```rust
 // game_core/src/simulation.rs
@@ -80,11 +80,12 @@ impl Simulation {
     // calls this the right number of times, so physics stays frame-rate
     // independent and reproducible.
     pub fn step(&mut self) {
-        ingest_inputs(&mut self.paddles, &mut self.net_queue);
-        move_ball(&mut self.ball, Params::FIXED_DT);
-        move_paddles(&mut self.paddles, &self.config, Params::FIXED_DT);
-        check_collisions(&mut self.ball, &self.paddles, &self.map, &self.config, &mut self.events);
-        check_scoring(&mut self.ball, &self.map, &mut self.score, &mut self.events, &mut self.respawn_state);
+        let dt = Params::FIXED_DT;
+        ingest_inputs(&mut self.paddles, &mut self.net_queue, &self.config);
+        move_ball(&mut self.ball, dt);
+        move_paddles(&mut self.paddles, &self.config, dt);
+        check_collisions(&mut self.ball, &self.paddles, &self.config, &mut self.events);
+        check_scoring(&mut self.ball, &self.config, &mut self.score, &mut self.events, &mut self.respawn_state);
     }
 }
 ```
@@ -163,7 +164,7 @@ Cloudflare bills Durable Objects based on **requests** and **execution time (GB-
 - **Free tier**: ~30 minutes of total gameplay per day.
 - **Paid plan ($5/month)**: ~50 hours of active gameplay per month before overages.
 
-Durable Objects are also single-region, which means global latency must be handled explicitly with region-aware matchmaking.
+Durable Objects are also single-region: a match runs wherever Cloudflare first spins up the DO, so global latency would need to be handled explicitly with region-aware placement.
 
 ---
 
@@ -175,7 +176,7 @@ By leaning on Rust’s ability to target WebAssembly, Pongo ends up with a clean
 2. **Strong authority** via deterministic server simulation.
 3. **Low operational overhead** by running game loops at the edge.
 
-You don’t need a traditional fleet of dedicated servers to build a responsive multiplayer game in 2024 — but you do need to be deliberate about determinism, networking, and cost.
+You don’t need a traditional fleet of dedicated servers to build a responsive multiplayer game today — but you do need to be deliberate about determinism, networking, and cost.
 
 ---
 

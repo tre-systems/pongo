@@ -12,3 +12,4 @@ Forward-looking work and known limitations. Items here are intentional gaps, not
 - **Reconnect resume polish.** On resume, the reconnecting client briefly shows a reset board (0:0) during the ready-countdown until the first state snapshot arrives. Could buffer the last snapshot to avoid the blip.
 - **Dependency freshness.** A few crates trail latest (`rand` 0.8, `getrandom` 0.2, `glam` 0.27). None are security-relevant; bump opportunistically.
 - **Spectators / >2 players.** The Durable Object is hard-coded to two players. A spectator (read-only) connection would be a natural extension.
+- **Region-aware DO placement.** Each match runs in whatever location Cloudflare first instantiates the DO (near whoever created it), so a player far from that region sees light-speed latency. Pass a `locationHint`/jurisdiction so both players land near a shared region.

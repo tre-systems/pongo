@@ -46,7 +46,7 @@ jobs:
       - name: Check Rust formatting
         run: cargo fmt --check
 
-      - name: Check JS/CSS/HTML formatting
+      - name: Check formatting (Prettier)
         run: npx --yes prettier@3.7.4 --check .
 
       - name: Run clippy
