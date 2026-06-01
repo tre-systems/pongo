@@ -177,7 +177,10 @@ impl GameState {
     /// Handle a socket close. Mid-match this starts a reconnect grace period
     /// (slot kept, sim frozen); otherwise the player is removed immediately.
     pub fn handle_disconnect(&mut self, player_id: u8) {
-        let mid_match = matches!(self.match_state, MatchState::Playing | MatchState::Countdown);
+        let mid_match = matches!(
+            self.match_state,
+            MatchState::Playing | MatchState::Countdown
+        );
         if mid_match && self.clients.contains_key(&player_id) {
             if let Some(client_info) = self.clients.get_mut(&player_id) {
                 client_info.connected = false;

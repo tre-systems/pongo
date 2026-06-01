@@ -122,8 +122,7 @@ impl DurableObject for MatchDO {
         let mut gs = self.game_state.borrow_mut();
 
         if let Some(player_id) = player_id {
-            gs.env
-                .log(format!("DO: Player {player_id} socket closed"));
+            gs.env.log(format!("DO: Player {player_id} socket closed"));
             // Mid-match this starts a reconnect grace period; otherwise it removes the player.
             gs.handle_disconnect(player_id);
         } else {
@@ -225,10 +224,10 @@ impl DurableObject for MatchDO {
             MatchState::Paused => {
                 // Sim is frozen awaiting reconnect; forfeit once the grace window passes.
                 if now_ms >= gs.reconnect_deadline_ms {
-                    let dropped = gs
-                        .clients
-                        .iter()
-                        .find_map(|(&p, info)| if !info.connected { Some(p) } else { None });
+                    let dropped =
+                        gs.clients
+                            .iter()
+                            .find_map(|(&p, info)| if !info.connected { Some(p) } else { None });
                     if let Some(pid) = dropped {
                         gs.env
                             .log("DO: Reconnect grace expired; forfeiting".to_string());
