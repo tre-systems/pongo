@@ -20,7 +20,6 @@ Forward-looking work and known limitations. Items here are intentional gaps, not
 Behaviour-neutral cleanups deferred to keep changes small and safe to verify.
 
 - **Collapse the CSS duplication.** `lobby_worker/style.css` declares many layout selectors twice — a desktop value, then an unguarded "mobile-first" block that always wins — so the desktop declarations are effectively dead. Rework into one mobile-first base plus a single `@media (min-width: …)` block; verify on mobile and desktop widths since it touches the live layout.
-- **Modularise `script.js`.** The ~1,200-line FSM driver could split into focused ES modules (input, networking, overlays, fsm-driver). Requires updating the static-asset copy in the build so the new files deploy.
 - **Tune the wasm release profile.** Add `[profile.release]` (e.g. `opt-level = "z"`, `lto = true`) to shrink and speed up the deployed wasm; confirm the shared simulation stays bit-identical so client/server determinism holds.
 - **Cover the time-based server paths.** Give the test `MockEnv` an advanceable clock so the reconnect-grace expiry and idle-timeout triggers in the alarm loop are tested directly (today only their consequences are), and assert the broadcast bytes for the match-lifecycle messages.
 - **Commit a lockfile.** Track `package-lock.json` and switch CI to `npm ci` for reproducible installs; pin the dev tooling (prettier, playwright) versions.
