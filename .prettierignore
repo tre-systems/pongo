@@ -1,6 +1,8 @@
 .husky/
 target/
 node_modules/
+package-lock.json
+worker/pkg/
 .wrangler/
 test-results/
 playwright-report/
