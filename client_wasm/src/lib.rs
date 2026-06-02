@@ -1,7 +1,11 @@
 //! Canvas2D client for Pong game
 
-// FSM module - platform agnostic, can be tested natively
+// Platform-agnostic modules (pure Rust + proto): compiled everywhere and unit-
+// tested natively. Only the wasm client consumes them, so dead_code is allowed
+// off-wasm.
 mod fsm;
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+mod state;
 
 // Re-export FSM types (always available)
 pub use fsm::{FsmState, GameAction, GameFsm};
@@ -15,8 +19,6 @@ mod input;
 mod network;
 #[cfg(target_arch = "wasm32")]
 mod simulation;
-#[cfg(target_arch = "wasm32")]
-mod state;
 
 #[cfg(target_arch = "wasm32")]
 use canvas2d::Renderer;

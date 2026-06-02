@@ -14,6 +14,14 @@ pub enum MatchEvent {
     OpponentReconnected,
 }
 
+// Exponential-smoothing time constants (seconds), chosen so a 1/60s frame
+// reproduces the original per-frame blend factors (ball 0.3, paddle 0.25):
+//   tau = -(1/60) / ln(1 - factor).
+// Deriving each frame's factor from dt as `1 - exp(-dt/tau)` makes convergence
+// frame-rate independent, so remote motion feels the same at 30, 60, or 120 Hz.
+const BALL_SMOOTHING_TAU: f32 = 0.0467;
+const PADDLE_SMOOTHING_TAU: f32 = 0.0579;
+
 /// Game state tracking with interpolation
 pub struct GameState {
     // Current authoritative state from server
@@ -91,14 +99,14 @@ impl GameState {
         let target_x = self.extrapolate_ball_internal(self.current.ball_x, self.current.ball_vx);
         let target_y = self.extrapolate_ball_internal(self.current.ball_y, self.current.ball_vy);
 
-        // Smoothing factor: higher = faster convergence (0.3 = ~3 frames to 90% convergence)
-        let smoothing = 0.3;
+        // Frame-rate-independent exponential smoothing (see the TAU consts above):
+        // blend toward the target by `1 - exp(-dt/tau)` so convergence tracks real
+        // elapsed time rather than frame count.
+        let smoothing = 1.0 - (-dt / BALL_SMOOTHING_TAU).exp();
         self.ball_display_x += (target_x - self.ball_display_x) * smoothing;
         self.ball_display_y += (target_y - self.ball_display_y) * smoothing;
 
-        // Apply same exponential smoothing to paddle positions for smooth opponent movement
-        // Lower smoothing (0.25) = smoother motion, slightly more latency
-        let paddle_smoothing = 0.25;
+        let paddle_smoothing = 1.0 - (-dt / PADDLE_SMOOTHING_TAU).exp();
         self.paddle_left_display_y +=
             (self.current.paddle_left_y - self.paddle_left_display_y) * paddle_smoothing;
         self.paddle_right_display_y +=
@@ -277,5 +285,40 @@ mod tests {
 
         assert!(after_x > initial_x, "Ball X should increase toward target");
         assert!(after_y > initial_y, "Ball Y should increase toward target");
+    }
+
+    #[test]
+    fn test_smoothing_is_frame_rate_independent() {
+        // The same elapsed time must converge equally regardless of how many
+        // frames it is split into — the whole point of the dt-based factor. Uses
+        // the paddle, whose target is static (no extrapolation moving the goal).
+        let snapshot = GameStateSnapshot {
+            ball_x: 16.0,
+            ball_y: 12.0,
+            paddle_left_y: 20.0,
+            paddle_right_y: 12.0,
+            ball_vx: 0.0,
+            ball_vy: 0.0,
+            tick: 1,
+            score_left: 0,
+            score_right: 0,
+        };
+
+        let mut coarse = GameState::new();
+        coarse.set_current(snapshot.clone());
+        coarse.update_interpolation(0.040); // one 40ms frame
+
+        let mut fine = GameState::new();
+        fine.set_current(snapshot);
+        for _ in 0..4 {
+            fine.update_interpolation(0.010); // four 10ms frames = same 40ms total
+        }
+
+        assert!(
+            (coarse.get_paddle_left_y() - fine.get_paddle_left_y()).abs() < 1e-3,
+            "convergence must match across frame rates: coarse={}, fine={}",
+            coarse.get_paddle_left_y(),
+            fine.get_paddle_left_y()
+        );
     }
 }
