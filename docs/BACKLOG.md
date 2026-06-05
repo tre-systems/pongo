@@ -6,7 +6,6 @@ Forward-looking work and known limitations. Items here are intentional gaps, not
 
 - **Reconnect slot is claimed by code, not identity.** While a match is paused for a reconnect (`server_do`), the next `Join` for that match re-attaches to the held-open slot. In a private two-player room that's the dropped player returning; in principle a third party who has the link could take the slot during the grace window. Acceptable for casual play — tighten with a per-player reconnect token if it ever matters.
 - **Match codes are guessable in principle.** Codes are 5 chars over a 36-char alphabet (~60M combinations) generated with `thread_rng`. Fine for short-lived two-capacity rooms; add rate limiting or longer codes if room-crashing is ever observed.
-- **Snapshot smoothing is frame-rate dependent.** The client interpolates the opponent paddle and ball toward each server snapshot with fixed per-frame factors (`client_wasm/src/state.rs`), so convergence speed scales with the display's refresh rate — remote motion feels slightly different at 30 vs 60 vs 120 Hz. Derive the smoothing from elapsed `dt` and a fixed time constant (tuned to preserve the current 60 Hz feel) to make it refresh-rate independent. Affects game feel, so verify on real displays at several refresh rates.
 
 ## Nice to have
 
