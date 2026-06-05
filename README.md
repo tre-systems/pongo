@@ -37,6 +37,7 @@ See **[ARCHITECTURE.md](ARCHITECTURE.md)** for the system diagram and component 
 - **Shared `game_core`** — The same deterministic physics runs the offline game and the authoritative server
 - **Binary protocol** — Minimal `postcard` serialization over WebSocket
 - **Durable Objects** — Each match is a stateful instance with 60Hz game loop
+- **Installable PWA** — A service worker caches the app shell, so the menu and VS-AI game work offline; an in-app prompt offers updates
 
 ## Project Structure
 
@@ -46,7 +47,7 @@ pongo/
 ├── proto/           # Network protocol (postcard)
 ├── client_wasm/     # Canvas2D renderer + client
 ├── server_do/       # Durable Object server
-├── lobby_worker/    # HTTP endpoints + routing
+├── lobby_worker/    # HTTP routing + static front-end (PWA)
 └── worker/          # Built WASM + assets
 ```
 
