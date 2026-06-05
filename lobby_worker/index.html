@@ -16,6 +16,16 @@
     />
 
     <link rel="stylesheet" href="style.css" />
+
+    <!-- PWA -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#0f172a" />
+    <link rel="icon" href="/icons/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Pongo" />
   </head>
   <body>
     <h1 class="game-title">PONGO</h1>
@@ -211,6 +221,7 @@
         </div>
       </div>
     </div>
+    <script type="module" src="pwa.js"></script>
     <script type="module" src="script.js"></script>
   </body>
 </html>

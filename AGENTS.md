@@ -28,7 +28,7 @@ Read before substantial work:
 
 ## Build & Run
 
-- `npm run build` — wasm-pack builds `lobby_worker` (server) and `client_wasm` (client) into `worker/pkg/`, and copies the static assets (`index.html`, `style.css`, and the front-end JS modules).
+- `npm run build` — wasm-pack builds `lobby_worker` (server) and `client_wasm` (client) into `worker/pkg/`, copies the static assets (`index.html`, `style.css`, the front-end JS modules, `manifest.webmanifest`, `icons/`), and stamps a unique cache version into the service worker (`scripts/stamp-sw.mjs`) so each deploy is picked up as a PWA update.
 - `npm run dev` — `wrangler dev` on <http://localhost:8787>.
 - `npm run deploy` — `wrangler deploy` (CI does this automatically on push to `main`).
 - `npm run logs` — `wrangler tail` for live Worker logs.
