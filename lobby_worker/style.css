@@ -1049,3 +1049,28 @@ body.touch-enabled .popout-btn {
   padding: 8px 10px;
   font-size: 14px;
 }
+
+/* "Buy me a coffee" tip-jar link — links to Ko-fi, self-styled (no external
+   image), so it matches the UI and works offline in the PWA. */
+.kofi-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  color: var(--text-muted, #94a3b8);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  transition:
+    color 0.2s,
+    border-color 0.2s,
+    background 0.2s;
+}
+
+.kofi-link:hover {
+  color: #fff;
+  border-color: rgba(99, 102, 241, 0.5);
+  background: rgba(99, 102, 241, 0.12);
+}
