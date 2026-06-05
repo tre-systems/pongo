@@ -34,6 +34,14 @@ Read before substantial work:
 - `npm run logs` — `wrangler tail` for live Worker logs.
 - Prerequisites: Rust + `wasm-pack`, Node 20+, and a one-time `npx wrangler login` for Cloudflare auth.
 
+## Operations
+
+The deployment is anonymous and stores no user data, so the main risk is resource abuse. Defences, by where they sit:
+
+- **In-app:** the server is authoritative (paddle input is clamped + speed-validated), each match is one Durable Object capped at two players, and idle matches are reaped after 120s. There is deliberately no in-Worker rate limiting — it belongs at the edge.
+- **Edge rate limiting** (Cloudflare dashboard → the `tre.systems` zone → Security → WAF → Rate limiting rules): throttle match creation — match `http.request.uri.path contains "/create"`, ~20 requests / 60s per client IP, action Block for 60s. Only extend the match to `/ws/` with headroom for the ~10 reconnect attempts a dropped player makes within the grace window.
+- **Billing:** on the Workers Free plan, abuse fails closed at $0 (throttling, not charges). On a Pay-as-you-go plan, set a Budget alert (Manage Account → Billing → Billable Usage → Create budget alert) so projected spend emails you.
+
 ## Architecture Rules
 
 - `game_core` is the single source of truth for the simulation and must stay deterministic and platform-agnostic — no browser or Worker APIs. The same `step` runs on the server and in the browser's offline game.
