@@ -9,7 +9,7 @@
     "test:all": "prettier --check . && cargo fmt --check && cargo check --workspace && cargo clippy --workspace -- -D warnings && cargo test --workspace && npm run check:diagrams",
     "format": "prettier --write .",
     "build:client": "cd client_wasm && wasm-pack build --target web --out-dir ../worker/pkg/client_wasm",
-    "build:server": "cd lobby_worker && wasm-pack build --target web --out-dir ../worker/pkg && cp index.html style.css *.js manifest.webmanifest ../worker/pkg/ && cp -r icons ../worker/pkg/",
+    "build:server": "node scripts/write-sentry-config.mjs && cd lobby_worker && wasm-pack build --target web --out-dir ../worker/pkg && cp index.html style.css *.js manifest.webmanifest ../worker/pkg/ && cp -r icons ../worker/pkg/",
     "build": "npm run build:server && npm run build:client && node scripts/stamp-sw.mjs",
     "dev": "npx wrangler dev --assets worker/pkg",
     "deploy": "npx wrangler deploy",
@@ -32,5 +32,8 @@
   "lint-staged": {
     "*.rs": "rustfmt",
     "**/*": "prettier --write --ignore-unknown"
+  },
+  "dependencies": {
+    "@sentry/cloudflare": "^10.57.0"
   }
 }
