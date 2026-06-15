@@ -43,6 +43,10 @@ const handler = {
     } catch (error) {
       // Log details server-side; don't leak internals (message/stack) to clients.
       console.error("Worker fetch error:", error);
+      if (env.SENTRY_DSN) {
+        Sentry.captureException(error);
+        ctx.waitUntil(Sentry.flush(2000));
+      }
       return new Response("Internal error", {
         status: 500,
         headers: { "Content-Type": "text/plain" },
