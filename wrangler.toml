@@ -3,6 +3,12 @@ main = "worker/index.js"
 compatibility_date = "2024-01-01"
 compatibility_flags = ["nodejs_als"]
 
+# Capture Workers logs/metrics so intermittent edge timeouts are diagnosable.
+# Traffic is only a few hundred requests/day, so sample everything.
+[observability]
+enabled = true
+head_sampling_rate = 1
+
 [vars]
 SENTRY_ENVIRONMENT = "production"
 SENTRY_PROJECT = "pongo"
