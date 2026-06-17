@@ -26,8 +26,12 @@ async fn handle_create(_req: Request, ctx: RouteContext<()>) -> Result<Response>
 
     // The DO is created lazily on first stub use; fetching the stub here verifies
     // the MATCH binding is configured before handing the code to the client.
+    // Resolve via id_from_name + get_stub: get_by_name maps to the getByName
+    // runtime API (added 2025-08-21), which the production edge does not expose
+    // at this worker's compatibility_date, so it 500s there even though local
+    // `wrangler dev` (newer workerd) accepts it.
     let match_do = ctx.env.durable_object("MATCH")?;
-    let _stub = match_do.get_by_name(&code)?;
+    let _stub = match_do.id_from_name(&code)?.get_stub()?;
 
     Response::from_json(&serde_json::json!({
         "code": code
@@ -44,8 +48,9 @@ async fn handle_join(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
     // Get the MATCH Durable Object namespace
     let match_do = ctx.env.durable_object("MATCH")?;
 
-    // Get DO stub by name (this creates the DO if it doesn't exist)
-    let _stub = match_do.get_by_name(code)?;
+    // Get DO stub by name. id_from_name + get_stub, not get_by_name/getByName —
+    // see handle_create for why getByName is unavailable in production.
+    let _stub = match_do.id_from_name(code)?.get_stub()?;
 
     // Return response with WebSocket URL
     Response::ok(format!(
@@ -60,7 +65,12 @@ async fn handle_websocket(req: Request, ctx: RouteContext<()>) -> Result<Respons
         return Response::error("Invalid match code", 400);
     }
 
-    let stub = ctx.env.durable_object("MATCH")?.get_by_name(code)?;
+    // id_from_name + get_stub, not get_by_name/getByName — see handle_create.
+    let stub = ctx
+        .env
+        .durable_object("MATCH")?
+        .id_from_name(code)?
+        .get_stub()?;
 
     // Ensure request method is GET (required for WebSocket upgrade)
     if req.method() != Method::Get {
