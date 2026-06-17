@@ -137,3 +137,23 @@ jobs:
           SENTRY_DSN: ${{ vars.SENTRY_DSN }}
           SENTRY_ENVIRONMENT: production
           SENTRY_RELEASE: ${{ github.sha }}
+
+      # Hit the live site after deploy so a prod-only break (e.g. a Durable Object
+      # binding that only fails on the edge, never in `wrangler dev`) fails the run.
+      # /create exercises the MATCH DO namespace, which the e2e suite can't catch.
+      - name: Smoke test production (Durable Object route)
+        run: |
+          url=https://pongo.tre.systems
+          for i in 1 2 3 4 5; do
+            out=$(curl -sS -m 20 -w '\n%{http_code}' "$url/create" || true)
+            status=$(printf '%s' "$out" | tail -n1)
+            body=$(printf '%s' "$out" | sed '$d')
+            echo "attempt $i: HTTP $status -> $body"
+            if [ "$status" = "200" ] && printf '%s' "$body" | grep -q '"code"'; then
+              echo "Smoke test passed: /create reaches the MATCH Durable Object."
+              exit 0
+            fi
+            sleep 6
+          done
+          echo "Smoke test FAILED: /create did not return 200 with a match code."
+          exit 1

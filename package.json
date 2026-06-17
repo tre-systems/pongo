@@ -30,7 +30,7 @@
     "prettier": "^3.7.4"
   },
   "lint-staged": {
-    "*.rs": "rustfmt",
+    "*.rs": "rustfmt --edition 2021",
     "**/*": "prettier --write --ignore-unknown"
   },
   "dependencies": {
