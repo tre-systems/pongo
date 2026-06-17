@@ -16,7 +16,11 @@ const sentryOptions = (env) => {
     release: env.SENTRY_RELEASE,
     sendDefaultPii: false,
     tracesSampleRate: env.SENTRY_ENVIRONMENT === "production" ? 0.01 : 0,
-    enableRpcTracePropagation: true,
+    // Keep RPC trace propagation OFF. When enabled, Sentry wraps RPC-capable
+    // bindings (including the MATCH Durable Object namespace) to inject trace
+    // headers; the workers-rs 0.6.7 binding cast then rejects the wrapped binding
+    // ("bound DurableObjectNamespace"), which 500s every Durable Object route.
+    enableRpcTracePropagation: false,
     beforeSend(event) {
       if (event.request) {
         delete event.request.cookies;
@@ -87,7 +91,8 @@ export const MatchDO = Sentry.instrumentDurableObjectWithSentry(
       environment: env.SENTRY_ENVIRONMENT || "production",
       sendDefaultPii: false,
       tracesSampleRate: 0,
-      enableRpcTracePropagation: true,
+      // Off for the same reason as above: keeps the DO bindings castable by workers-rs.
+      enableRpcTracePropagation: false,
     },
   MatchDOWrapper
 );
