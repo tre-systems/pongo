@@ -24,14 +24,19 @@ async fn handle_index(_req: Request, _ctx: RouteContext<()>) -> Result<Response>
 async fn handle_create(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let code = generate_match_code();
 
-    // The DO is created lazily on first stub use; fetching the stub here verifies
-    // the MATCH binding is configured before handing the code to the client.
-    // Resolve via id_from_name + get_stub: get_by_name maps to the getByName
-    // runtime API (added 2025-08-21), which the production edge does not expose
-    // at this worker's compatibility_date, so it 500s there even though local
-    // `wrangler dev` (newer workerd) accepts it.
-    let match_do = ctx.env.durable_object("MATCH")?;
-    let _stub = match_do.id_from_name(&code)?.get_stub()?;
+    // DIAGNOSTIC (temporary): observability is mid-outage, so surface which DO
+    // call fails and its exact error in the response body. Revert with the real fix.
+    let ns = match ctx.env.durable_object("MATCH") {
+        Ok(ns) => ns,
+        Err(e) => return Response::error(format!("DIAG durable_object: {e:?}"), 500),
+    };
+    let id = match ns.id_from_name(&code) {
+        Ok(id) => id,
+        Err(e) => return Response::error(format!("DIAG id_from_name: {e:?}"), 500),
+    };
+    if let Err(e) = id.get_stub() {
+        return Response::error(format!("DIAG get_stub: {e:?}"), 500);
+    }
 
     Response::from_json(&serde_json::json!({
         "code": code
