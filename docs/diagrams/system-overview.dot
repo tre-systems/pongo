@@ -64,9 +64,9 @@ digraph SystemOverview {
       margin=22
     ];
 
-    C_RENDER [label=<<B>Input + Canvas2D renderer</B><BR/><FONT POINT-SIZE="15">draws ball + paddles</FONT>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
-    C_PRED [label=<<B>Own-paddle integration</B><BR/><FONT POINT-SIZE="15">immediate local move; interpolates opponent + ball</FONT>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
-    C_LOCAL [label=<<B>Local VS-AI game</B><BR/><FONT POINT-SIZE="15">offline, client-only</FONT>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
+    C_RENDER [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>Input + Canvas2D renderer</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">draws ball + paddles</FONT></TD></TR></TABLE>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
+    C_PRED [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>Own-paddle integration</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">immediate local move; interpolates opponent + ball</FONT></TD></TR></TABLE>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
+    C_LOCAL [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>Local VS-AI game</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">offline, client-only</FONT></TD></TR></TABLE>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
 
     C_RENDER -> C_PRED [style=invis];
     C_PRED -> C_LOCAL [style=invis];
@@ -90,8 +90,8 @@ digraph SystemOverview {
       margin=22
     ];
 
-    CORE [label=<<B>game_core</B><BR/><FONT POINT-SIZE="15">Simulation::step — struct-based physics</FONT>>, fillcolor="#f3ecff:#ffffff", color="#7c3aed", width=3.6];
-    PROTO [label=<<B>proto</B><BR/><FONT POINT-SIZE="15">postcard binary C2S / S2C</FONT>>, fillcolor="#f3ecff:#ffffff", color="#7c3aed"];
+    CORE [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>game_core</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">Simulation::step — struct-based physics</FONT></TD></TR></TABLE>>, fillcolor="#f3ecff:#ffffff", color="#7c3aed", width=3.6];
+    PROTO [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>proto</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">postcard binary C2S / S2C</FONT></TD></TR></TABLE>>, fillcolor="#f3ecff:#ffffff", color="#7c3aed"];
 
     CORE -> PROTO [style=invis];
   }
@@ -114,21 +114,21 @@ digraph SystemOverview {
       margin=22
     ];
 
-    LOBBY [label=<<B>Lobby Worker</B><BR/><FONT POINT-SIZE="15">/create, /join/:code, match-code routing</FONT>>, fillcolor="#eaf8ef:#ffffff", color="#22865a", width=3.6];
-    DO [label=<<B>MatchDO — Durable Object</B><BR/><FONT POINT-SIZE="15">authoritative state, one per match</FONT>>, fillcolor="#eaf8ef:#ffffff", color="#22865a", width=3.6];
-    LOOP [label=<<B>Game loop — 60Hz alarm</B><BR/><FONT POINT-SIZE="15">steps the simulation, broadcasts at 20Hz</FONT>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00", width=3.6];
+    LOBBY [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>Lobby Worker</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">/create, /join/:code, match-code routing</FONT></TD></TR></TABLE>>, fillcolor="#eaf8ef:#ffffff", color="#22865a", width=3.6];
+    DO [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>MatchDO — Durable Object</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">authoritative state, one per match</FONT></TD></TR></TABLE>>, fillcolor="#eaf8ef:#ffffff", color="#22865a", width=3.6];
+    LOOP [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>Game loop — 60Hz alarm</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="15">steps the simulation, broadcasts at 20Hz</FONT></TD></TR></TABLE>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00", width=3.6];
 
     LOBBY -> DO [style=invis];
     DO -> LOOP [style=invis];
   }
 
   // ---- Shared-core usage (same code on server + offline game) ----
-  C_LOCAL -> CORE [label="runs", style=dashed, color="#7c3aed", fontcolor="#7c3aed"];
-  LOOP -> CORE [label="runs (authoritative)", style=dashed, color="#7c3aed", fontcolor="#7c3aed", constraint=false];
+  C_LOCAL -> CORE [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">runs</FONT></TD></TR></TABLE>>, style=dashed, color="#7c3aed", fontcolor="#7c3aed"];
+  LOOP -> CORE [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">runs (authoritative)</FONT></TD></TR></TABLE>>, style=dashed, color="#7c3aed", fontcolor="#7c3aed", constraint=false];
 
   // ---- Request / data flow ----
-  C_RENDER -> LOBBY [label="GET /create, /join/:code", constraint=false];
-  C_PRED -> DO [label="C2S input (~30Hz)", color="#2f80ed", fontcolor="#2f80ed"];
-  DO -> C_PRED [label="S2C snapshot (20Hz)", color="#22865a", fontcolor="#22865a", constraint=false];
-  PROTO -> DO [label="serialize / parse", style=dotted, color="#7c3aed", fontcolor="#7c3aed", constraint=false];
+  C_RENDER -> LOBBY [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">GET /create, /join/:code</FONT></TD></TR></TABLE>>, constraint=false];
+  C_PRED -> DO [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">C2S input (~30Hz)</FONT></TD></TR></TABLE>>, color="#2f80ed", fontcolor="#2f80ed"];
+  DO -> C_PRED [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">S2C snapshot (20Hz)</FONT></TD></TR></TABLE>>, color="#22865a", fontcolor="#22865a", constraint=false];
+  PROTO -> DO [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">serialize / parse</FONT></TD></TR></TABLE>>, style=dotted, color="#7c3aed", fontcolor="#7c3aed", constraint=false];
 }

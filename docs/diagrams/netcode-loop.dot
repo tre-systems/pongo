@@ -52,11 +52,11 @@ digraph NetcodeLoop {
       labelloc=t, labeljust=l,
       color="#b9d8ff", fillcolor="#f7fbff", style="rounded,filled", penwidth=1.8, margin=20
     ];
-    INPUT [label=<<B>Capture input</B><BR/><FONT POINT-SIZE="14">keyboard / touch → paddle Y</FONT>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
-    OWN [label=<<B>Move own paddle locally</B><BR/><FONT POINT-SIZE="14">immediate, zero-latency feel</FONT>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
-    RENDER [label=<<B>Canvas2D render</B><BR/><FONT POINT-SIZE="14">interpolate opponent + ball from snapshots</FONT>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
+    INPUT [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>Capture input</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="14">keyboard / touch → paddle Y</FONT></TD></TR></TABLE>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
+    OWN [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>Move own paddle locally</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="14">immediate, zero-latency feel</FONT></TD></TR></TABLE>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
+    RENDER [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>Canvas2D render</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="14">interpolate opponent + ball from snapshots</FONT></TD></TR></TABLE>>, fillcolor="#edf7ff:#ffffff", color="#2f80ed"];
 
-    INPUT -> OWN [label="apply immediately"];
+    INPUT -> OWN [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">apply immediately</FONT></TD></TR></TABLE>>];
     OWN -> RENDER;
   }
 
@@ -67,16 +67,16 @@ digraph NetcodeLoop {
       labelloc=t, labeljust=l,
       color="#b8e5c8", fillcolor="#f6fdf9", style="rounded,filled", penwidth=1.8, margin=20
     ];
-    INGEST [label=<<B>Ingest inputs</B><BR/><FONT POINT-SIZE="14">clamp + speed-validate</FONT>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
-    STEP [label=<<B>Step simulation — 60Hz</B><BR/><FONT POINT-SIZE="14">alarm loop runs game_core</FONT>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
-    BROADCAST [label=<<B>Broadcast snapshot</B><BR/><FONT POINT-SIZE="14">every 3rd tick (20Hz)</FONT>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
+    INGEST [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>Ingest inputs</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="14">clamp + speed-validate</FONT></TD></TR></TABLE>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
+    STEP [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>Step simulation — 60Hz</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="14">alarm loop runs game_core</FONT></TD></TR></TABLE>>, fillcolor="#fff4d1:#fffaf0", color="#d39a00"];
+    BROADCAST [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>Broadcast snapshot</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="14">every 3rd tick (20Hz)</FONT></TD></TR></TABLE>>, fillcolor="#eaf8ef:#ffffff", color="#22865a"];
 
     INGEST -> STEP;
     STEP -> BROADCAST;
-    STEP -> STEP [label="fixed 1/60s tick", color="#d39a00", fontcolor="#d39a00"];
+    STEP -> STEP [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">fixed 1/60s tick</FONT></TD></TR></TABLE>>, color="#d39a00", fontcolor="#d39a00"];
   }
 
   // ---- Over the wire (postcard binary over WebSocket) ----
-  INPUT -> INGEST [label="C2S::Input  (~30Hz)", color="#2f80ed", fontcolor="#2f80ed"];
-  BROADCAST -> RENDER [label="S2C::GameState  (20Hz)", color="#22865a", fontcolor="#22865a"];
+  INPUT -> INGEST [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">C2S::Input  (~30Hz)</FONT></TD></TR></TABLE>>, color="#2f80ed", fontcolor="#2f80ed"];
+  BROADCAST -> RENDER [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">S2C::GameState  (20Hz)</FONT></TD></TR></TABLE>>, color="#22865a", fontcolor="#22865a"];
 }

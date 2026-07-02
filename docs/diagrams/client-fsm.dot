@@ -46,7 +46,7 @@ digraph ClientFsm {
 
   // ---- Start + hub ----
   start [shape=point, width=0.18, color="#5b6b80", fillcolor="#5b6b80"];
-  IDLE [label=<<B>Idle</B><BR/><FONT POINT-SIZE="12" COLOR="#5b6b80">menu</FONT>>, fillcolor="#e0e7ef:#ffffff", color="#5b6b80", penwidth=3.0];
+  IDLE [label=<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0" CELLPADDING="0"><TR><TD><B>Idle</B></TD></TR><TR><TD CELLPADDING="4"><FONT POINT-SIZE="12" COLOR="#5b6b80">menu</FONT></TD></TR></TABLE>>, fillcolor="#e0e7ef:#ffffff", color="#5b6b80", penwidth=3.0];
 
   // ---- Local game (client-only) ----
   subgraph cluster_local {
@@ -80,33 +80,33 @@ digraph ClientFsm {
 
   // ---- Entry ----
   start -> IDLE;
-  IDLE -> CL [label="StartLocal"];
-  IDLE -> CONN [label="CreateMatch /\nJoinMatch"];
+  IDLE -> CL [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">StartLocal</FONT></TD></TR></TABLE>>];
+  IDLE -> CONN [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">CreateMatch /\nJoinMatch</FONT></TD></TR></TABLE>>];
 
   // ---- Local flow ----
-  CL -> PL [label="CountdownDone"];
-  PL -> PAUSED [label="Pause"];
-  PAUSED -> PL [label="Resume"];
-  PL -> GOL [label="GameOver"];
-  GOL -> CL [label="PlayAgain"];
+  CL -> PL [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">CountdownDone</FONT></TD></TR></TABLE>>];
+  PL -> PAUSED [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">Pause</FONT></TD></TR></TABLE>>];
+  PAUSED -> PL [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">Resume</FONT></TD></TR></TABLE>>];
+  PL -> GOL [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">GameOver</FONT></TD></TR></TABLE>>];
+  GOL -> CL [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">PlayAgain</FONT></TD></TR></TABLE>>];
 
   // ---- Multiplayer flow ----
-  CONN -> WAIT [label="Connected"];
-  WAIT -> CM [label="OpponentJoined"];
-  CM -> PM [label="CountdownDone"];
-  PM -> GOM [label="GameOver"];
-  GOM -> CM [label="RematchStarted"];
+  CONN -> WAIT [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">Connected</FONT></TD></TR></TABLE>>];
+  WAIT -> CM [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">OpponentJoined</FONT></TD></TR></TABLE>>];
+  CM -> PM [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">CountdownDone</FONT></TD></TR></TABLE>>];
+  PM -> GOM [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">GameOver</FONT></TD></TR></TABLE>>];
+  GOM -> CM [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">RematchStarted</FONT></TD></TR></TABLE>>];
 
   // ---- Reconnect (mid-match drop) ----
-  PM -> RECON [label="ConnectionLost", color="#d97706", fontcolor="#d97706"];
-  CM -> RECON [label="ConnectionLost", color="#d97706", fontcolor="#d97706"];
-  RECON -> CM [label="Reconnected", color="#15803d", fontcolor="#15803d"];
+  PM -> RECON [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">ConnectionLost</FONT></TD></TR></TABLE>>, color="#d97706", fontcolor="#d97706"];
+  CM -> RECON [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">ConnectionLost</FONT></TD></TR></TABLE>>, color="#d97706", fontcolor="#d97706"];
+  RECON -> CM [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">Reconnected</FONT></TD></TR></TABLE>>, color="#15803d", fontcolor="#15803d"];
 
   // ---- Disconnect / give up (error) ----
-  CM -> DISC [label="Disconnected", color="#c53030", fontcolor="#c53030"];
-  PM -> DISC [label="Disconnected", color="#c53030", fontcolor="#c53030"];
-  GOM -> DISC [label="Disconnected", color="#c53030", fontcolor="#c53030"];
-  RECON -> DISC [label="ReconnectFailed", color="#c53030", fontcolor="#c53030"];
+  CM -> DISC [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">Disconnected</FONT></TD></TR></TABLE>>, color="#c53030", fontcolor="#c53030"];
+  PM -> DISC [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">Disconnected</FONT></TD></TR></TABLE>>, color="#c53030", fontcolor="#c53030"];
+  GOM -> DISC [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">Disconnected</FONT></TD></TR></TABLE>>, color="#c53030", fontcolor="#c53030"];
+  RECON -> DISC [label=<<TABLE BORDER="1" CELLBORDER="0" STYLE="ROUNDED" COLOR="#d7dee8" BGCOLOR="#ffffff" CELLSPACING="0" CELLPADDING="4"><TR><TD><FONT POINT-SIZE="13" COLOR="#3d4a5c">ReconnectFailed</FONT></TD></TR></TABLE>>, color="#c53030", fontcolor="#c53030"];
 
   // ---- Returns to Idle ----
   // Every active state returns to Idle; drawn as one note rather than nine
