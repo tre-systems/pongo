@@ -13,6 +13,7 @@ const APP_SHELL = [
   "/manifest.webmanifest",
   "/script.js",
   "/pwa.js",
+  "/pwa-lifecycle.mjs",
   "/wasm.js",
   "/audio.js",
   "/overlays.js",
@@ -26,7 +27,10 @@ self.addEventListener("install", (event) => {
       .then((cache) => cache.addAll(APP_SHELL))
       .catch(() => {})
   );
-  self.skipWaiting();
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
