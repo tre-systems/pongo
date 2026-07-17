@@ -247,7 +247,7 @@ impl MatchDO {
         let should_start_alarm = {
             let mut gs = self.game_state.borrow_mut();
             match msg {
-                C2S::Join { code: _, .. } if gs.match_state == MatchState::Paused => {
+                C2S::Join { .. } if gs.match_state == MatchState::Paused => {
                     // A player is returning to a slot held open during the grace period.
                     if let Some(player_id) = gs.reconnect_player(Box::new(ws.clone())) {
                         if let Err(e) = ws.serialize_attachment(player_id) {
@@ -268,7 +268,7 @@ impl MatchDO {
                     // The alarm loop is already running while paused.
                     None
                 }
-                C2S::Join { code: _, .. } => {
+                C2S::Join { .. } => {
                     // We need to clone WS here because add_player takes ownership
                     if let Some((player_id, was_empty)) = gs.add_player(Box::new(ws.clone())) {
                         // Tag this socket with its player id so we can identify it on
