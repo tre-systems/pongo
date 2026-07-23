@@ -1,6 +1,7 @@
 import * as Sentry from "@sentry/cloudflare";
 import init, { fetch as wasmFetch, MatchDO as WasmMatchDO } from "./pkg/lobby_worker.js";
 import wasmUrl from "./pkg/lobby_worker_bg.wasm";
+import { isScannerTransaction } from "./scanner-transactions.mjs";
 
 let initPromise;
 async function ensureInit() {
@@ -15,7 +16,12 @@ const sentryOptions = (env) => {
     environment: env.SENTRY_ENVIRONMENT || "production",
     release: env.SENTRY_RELEASE,
     sendDefaultPii: false,
-    tracesSampleRate: env.SENTRY_ENVIRONMENT === "production" ? 0.01 : 0,
+    // This changes only Sentry trace sampling. Cloudflare request and
+    // security analytics continue to count these probes independently.
+    tracesSampler({ name }) {
+      if (isScannerTransaction(name)) return 0;
+      return env.SENTRY_ENVIRONMENT === "production" ? 0.01 : 0;
+    },
     // Keep RPC trace propagation OFF. When enabled, Sentry wraps RPC-capable
     // bindings (including the MATCH Durable Object namespace) to inject trace
     // headers; the workers-rs 0.6.7 binding cast then rejects the wrapped binding
