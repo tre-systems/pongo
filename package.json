@@ -11,7 +11,7 @@
     "test:scanner": "node --test tests/scanner-transactions.test.mjs",
     "format": "prettier --write .",
     "build:client": "cd client_wasm && wasm-pack build --target web --out-dir ../worker/pkg/client_wasm",
-    "build:server": "node scripts/write-sentry-config.mjs && cd lobby_worker && wasm-pack build --target web --out-dir ../worker/pkg && cp index.html style.css *.js *.mjs manifest.webmanifest _headers ../worker/pkg/ && cp -r icons ../worker/pkg/",
+    "build:server": "node scripts/write-sentry-config.mjs && cd lobby_worker && wasm-pack build --target web --out-dir ../worker/pkg && cp index.html style.css *.js *.mjs manifest.webmanifest robots.txt sitemap.xml _headers ../worker/pkg/ && cp -r icons ../worker/pkg/",
     "build": "npm run build:server && npm run build:client && node scripts/stamp-sw.mjs",
     "dev": "npx wrangler dev --assets worker/pkg",
     "deploy": "npx wrangler deploy",

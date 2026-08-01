@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /create
+Disallow: /ws/
+
+Sitemap: https://pongo.tre.systems/sitemap.xml
