@@ -45,9 +45,20 @@ const sentryOptions = (env) => {
   };
 };
 
+const isDynamicRoute = (req) => {
+  if (req.method !== "GET" && req.method !== "HEAD") return true;
+  const { pathname } = new URL(req.url);
+  return pathname === "/create" || pathname.startsWith("/join/") || pathname.startsWith("/ws/");
+};
+
 const handler = {
   async fetch(req, env, ctx) {
     try {
+      if (!isDynamicRoute(req)) {
+        const assetResponse = await env.ASSETS.fetch(req);
+        if (assetResponse.status !== 404) return assetResponse;
+      }
+
       await ensureInit();
       return await wasmFetch(req, env, ctx);
     } catch (error) {
